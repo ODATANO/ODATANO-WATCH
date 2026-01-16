@@ -1,129 +1,242 @@
-# Setup Instructions
+# Setup Guide
 
-## Quick Start
+Installation, configuration, and deployment for the Cardano Watcher Plugin.
 
-Follow these steps to set up the project:
+## Installation
 
-### 1. Install Dependencies
+### For Plugin Users
 
 ```bash
-npm install
+npm add @odatano/cardano-watcher
 ```
 
-This will install:
-- TypeScript and build tools
-- `@types/node` for Node.js type definitions
-- Testing framework (Jest with ts-jest)
-- ESLint for code quality
-- All required dependencies
-
-### 2. Build the Project
+### For Plugin Developers
 
 ```bash
+git clone https://github.com/odatano/cardano-watcher.git
+npm install
 npm run build
 ```
 
-This compiles the TypeScript code to JavaScript in the `dist/` folder.
+## Configuration
 
-### 3. Run Tests (Optional)
-
-```bash
-npm test
-```
-
-### 4. Use in Your CAP Project
-
-After successful build, you can publish the package:
-
-```bash
-npm publish
-```
-
-Or link it locally for testing:
-
-```bash
-# In this project
-npm link
-
-# In your CAP project
-npm link @odatano/cardano-watcher
-```
-
-## Configuration Options
-
-The plugin supports individual polling paths with separate intervals:
+### Basic Configuration
 
 ```json
 {
   "cds": {
     "cardanoWatcher": {
-      "network": "mainnet",
-      "blockfrostProjectId": "your-project-id",
-      "autoStart": true,
-      
-      "addressPolling": {
-        "enabled": true,
-        "interval": 30
-      },
-      "transactionPolling": {
-        "enabled": true,
-        "interval": 60
-      },
+      "network": "preprod",
+      "blockfrostProjectId": "preprod_YOUR_KEY",
+      "autoStart": true
     }
   }
 }
 ```
 
-### Polling Intervals
+### Full Configuration Options
 
-- **addressPolling**: Monitor watched addresses (default: 30s)
-- **transactionPolling**: Check if submitted TXs are in network (default: 60s)
+```typescript
+interface CardanoWatcherConfig {
+  network: "mainnet" | "preprod" | "preview";
+  blockfrostProjectId: string;
+  autoStart?: boolean;  // default: false
+  
+  addressPolling?: {
+    enabled: boolean;   // default: true
+    interval: number;   // seconds, default: 30
+  };
+  
+  transactionPolling?: {
+    enabled: boolean;   // default: true
+    interval: number;   // seconds, default: 60
+  };
+  
+  maxRetries?: number;    // default: 3
+  retryDelay?: number;    // ms, default: 1000
+  batchSize?: number;     // default: 50
+}
+```
 
-## TypeScript Notes
+### Environment Variables
 
-The project uses TypeScript with the following configuration:
+```bash
+CDS_CARDANO_WATCHER_NETWORK=mainnet
+CDS_CARDANO_WATCHER_BLOCKFROST_PROJECT_ID=mainnet_abc123
+CDS_CARDANO_WATCHER_AUTO_START=true
+```
 
-- **Target**: ES2020
-- **Module System**: CommonJS
-- **Strict Mode**: Enabled (with `noImplicitAny: false` for flexibility)
-- **Source Maps**: Generated for debugging
-- **Declaration Files**: Generated (`.d.ts`)
+## Database Setup
 
-## CDS Type Definitions
+Entities are deployed automatically with `cds deploy`.
 
-The project uses official `@cap-js/cds-types` package for TypeScript type definitions. Type declaration files (.d.ts) are automatically generated from the TypeScript source during build.
+**Manual inspection**:
+```bash
+cds deploy --dry-run > migration.sql
+```
+
+**Created entities**: `WatchedAddress`, `TransactionSubmission`, `BlockchainEvent`, `Transaction`
+
+## Security
+
+### API Key Management
+
+**❌ Never hardcode**:
+```json
+"blockfrostProjectId": "mainnet_hardcoded_key"
+```
+
+**✅ Use environment variables**:
+```json
+"blockfrostProjectId": "${CDS_CARDANO_WATCHER_BLOCKFROST_PROJECT_ID}"
+```
+
+**✅ Kubernetes Secrets**:
+```yaml
+env:
+  - name: CDS_CARDANO_WATCHER_BLOCKFROST_PROJECT_ID
+    valueFrom:
+      secretKeyRef:
+        name: cardano-secrets
+        key: blockfrostProjectId
+```
+
+### Authorization
+
+Restrict admin service:
+
+```cds
+using { CardanoWatcherAdminService } from '@odatano/cardano-watcher';
+extend service CardanoWatcherAdminService with @(requires: 'admin');
+```
+
+## Deployment
+
+### Docker
+
+```dockerfile
+FROM node:18-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --production
+COPY . .
+EXPOSE 4004
+CMD ["npx", "cds", "serve"]
+```
+
+```bash
+docker run -p 4004:4004 \
+  -e CDS_CARDANO_WATCHER_NETWORK=mainnet \
+  -e CDS_CARDANO_WATCHER_BLOCKFROST_PROJECT_ID=mainnet_... \
+  my-cap-app
+```
+
+### Cloud Foundry
+
+```yaml
+applications:
+  - name: cardano-watcher-app
+    memory: 512M
+    buildpack: nodejs_buildpack
+    env:
+      CDS_CARDANO_WATCHER_NETWORK: mainnet
+```
+
+Bind secret service:
+```bash
+cf create-user-provided-service cardano-config -p '{"blockfrostProjectId":"..."}'
+cf bind-service my-app cardano-config
+```
+
+## Performance Tuning
+
+| Project Size | Address Interval | TX Interval | Batch Size |
+|--------------|------------------|-------------|------------|
+| < 10 items   | 30s              | 60s         | 50         |
+| 10-100 items | 60s              | 120s        | 50         |
+| > 100 items  | 120s             | 180s        | 100        |
+
+**Blockfrost free tier**: 50,000 requests/day, 10 req/s
 
 ## Troubleshooting
 
-###  "Cannot find type definition file for 'node'"
-
-Run `npm install` to install `@types/node`.
-
-### "Cannot find module '@sap/cds'"
-
-This is expected during standalone development since `@sap/cds` is a peerDependency. The error will disappear when the package is used in a real CAP project with `@sap/cds` installed.
-
-### Build Errors
-
-Make sure all dependencies are installed:
+### Plugin Not Loading
 
 ```bash
-rm -rf node_modules package-lock.json
-npm install
-npm run build
+# Check installation
+npm ls @odatano/cardano-watcher
+
+# Verify config
+cds env get cardanoWatcher
+
+# View logs
+cds watch
 ```
 
-## Development Workflow
+### Events Not Firing
 
-1. Make changes to TypeScript files in `src/` or `srv/`
-2. Run `npm run build` to compile
-3. Run `npm test` to ensure tests pass
-4. Commit your changes
+```typescript
+// Check status
+const status = await cardanoWatcher.getStatus();
+console.log(status);
 
-For continuous development:
+// Manual poll
+await cardanoWatcher.manualPoll();
 
-```bash
-npm run build:watch
+// Enable debug logs
+cds.env.log.levels = { cardanoWatcher: "debug" };
 ```
 
-This will watch for file changes and recompile automatically.
+### API Rate Limits
+
+- Increase polling intervals
+- Reduce watched items
+- Upgrade Blockfrost plan
+
+## CI/CD
+
+### GitHub Actions
+
+```yaml
+name: Test
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+        env:
+          CDS_CARDANO_WATCHER_BLOCKFROST_PROJECT_ID: ${{ secrets.BLOCKFROST_KEY }}
+```
+
+## Resources
+
+
+      "batchSize": 100,
+      "maxRetries": 5
+    }
+  }
+}
+```
+
+Consider upgrading to Blockfrost paid tier for higher rate limits!
+
+---
+
+## Support & Resources
+
+- **Documentation**: [GitHub Repo](https://github.com/odatano/cardano-watcher)
+- **Issues**: [GitHub Issues](https://github.com/odatano/cardano-watcher/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/odatano/cardano-watcher/discussions)
+- **CAP Documentation**: [cap.cloud.sap](https://cap.cloud.sap)
+- **Blockfrost API**: [docs.blockfrost.io](https://docs.blockfrost.io)
+
+---
+
+**Setup complete!** Your plugin is now ready for development or production use.

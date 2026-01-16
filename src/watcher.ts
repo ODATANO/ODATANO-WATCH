@@ -8,7 +8,7 @@ const COMPONENT_NAME = "/cardanoWatcher/watcher";
 
 let addressInterval: NodeJS.Timeout | null = null;
 let transactionInterval: NodeJS.Timeout | null = null;
-let mempoolInterval: NodeJS.Timeout | null = null;
+// let mempoolInterval: NodeJS.Timeout | null = null; // Not implemented yet
 
 let isRunning = false;
 let addressPollingActive = false;
@@ -16,7 +16,6 @@ let transactionPollingActive = false;
 let mempoolPollingActive = false;
 
 interface WatchedAddress {
-  ID: string;
   address: string;
   description?: string;
   active: boolean;
@@ -208,9 +207,11 @@ export async function stopTransactionPolling(): Promise<void> {
 
 /**
  * Poll watched addresses for new transactions
+ * @returns Number of events detected
  */
-async function pollWatchedAddresses(): Promise<void> {
+async function pollWatchedAddresses(): Promise<number> {
   const logger = cds.log(COMPONENT_NAME);
+  let eventsDetected = 0;
 
   try {
     // Get watched addresses
@@ -223,28 +224,33 @@ async function pollWatchedAddresses(): Promise<void> {
 
     if (!watchedAddresses || watchedAddresses.length === 0) {
       logger.debug("No active watched addresses found");
-      return;
+      return 0;
     }
 
     logger.debug(`Checking ${watchedAddresses.length} watched addresses`);
 
     // Process each watched address
     for (const watchedAddr of watchedAddresses) {
-      await processAddress(watchedAddr);
+      const events = await processAddress(watchedAddr);
+      eventsDetected += events;
     }
 
   } catch (err) {
     logger.error("Error in pollWatchedAddresses:", err);
     throw err;
   }
+  
+  return eventsDetected;
 }
 
 /**
  * Process a single watched address
+ * @returns Number of events detected
  */
-async function processAddress(watchedAddr: WatchedAddress): Promise<void> {
+async function processAddress(watchedAddr: WatchedAddress): Promise<number> {
   const logger = cds.log(COMPONENT_NAME);
   const cfg = config.get();
+  let eventsDetected = 0;
 
   try {
     logger.debug(`Processing address: ${watchedAddr.address}`);
@@ -253,6 +259,7 @@ async function processAddress(watchedAddr: WatchedAddress): Promise<void> {
 
     if (transactions && transactions.length > 0) {
       logger.info(`Found ${transactions.length} new transactions for ${watchedAddr.address}`);
+      eventsDetected = transactions.length;
 
       await cds.tx(async (tx: any) => {
         for (const tx_data of transactions) {
@@ -263,7 +270,7 @@ async function processAddress(watchedAddr: WatchedAddress): Promise<void> {
               blockNumber: tx_data.blockNumber,
               blockHash: tx_data.blockHash,
               txHash: tx_data.txHash,
-              address_ID: watchedAddr.ID,
+              address_address: watchedAddr.address,
               payload: JSON.stringify(tx_data),
               network: cfg.network,
               processed: false,
@@ -293,7 +300,7 @@ async function processAddress(watchedAddr: WatchedAddress): Promise<void> {
         await tx.run(
           UPDATE.entity("odatano.watch.WatchedAddress")
             .set({ lastCheckedBlock: maxBlock })
-            .where({ ID: watchedAddr.ID })
+            .where({ address: watchedAddr.address })
         );
       });
 
@@ -308,6 +315,8 @@ async function processAddress(watchedAddr: WatchedAddress): Promise<void> {
   } catch (err) {
     logger.error(`Error processing address ${watchedAddr.address}:`, err);
   }
+  
+  return eventsDetected;
 }
 
 /**
@@ -341,9 +350,11 @@ async function fetchAddressTransactions(
  * Poll submitted transactions to check if they are in the network
  * This checks if submitted transactions have been picked up by the blockchain,
  * not their confirmation status.
+ * @returns Number of events detected
  */
-async function pollTransactionSubmissions(): Promise<void> {
+async function pollTransactionSubmissions(): Promise<number> {
   const logger = cds.log(COMPONENT_NAME);
+  let eventsDetected = 0;
 
   try {
     // Get active transaction submissions
@@ -356,29 +367,34 @@ async function pollTransactionSubmissions(): Promise<void> {
 
     if (!submissions || submissions.length === 0) {
       logger.debug("No active transaction submissions found");
-      return;
+      return 0;
     }
 
     logger.debug(`Checking ${submissions.length} transaction submissions`);
 
     // Process each submission
     for (const submission of submissions) {
-      await processTransactionSubmission(submission);
+      const events = await processTransactionSubmission(submission);
+      eventsDetected += events;
     }
 
   } catch (err) {
     logger.error("Error in pollTransactionSubmissions:", err);
     throw err;
   }
+  
+  return eventsDetected;
 }
 
 /**
  * Process a single transaction submission
  * Checks if submitted transaction is in the network (found on-chain)
+ * @returns Number of events detected
  */
-async function processTransactionSubmission(submission: any): Promise<void> {
+async function processTransactionSubmission(submission: any): Promise<number> {
   const logger = cds.log(COMPONENT_NAME);
   const cfg = config.get();
+  let eventsDetected = 0;
 
   try {
     logger.debug(`Checking if transaction ${submission.txHash} is in network`);
@@ -397,10 +413,10 @@ async function processTransactionSubmission(submission: any): Promise<void> {
               lastChecked: new Date().toISOString(),
               currentStatus: "PENDING"
             })
-            .where({ ID: submission.ID })
+            .where({ txHash: submission.txHash })
         );
       });
-      return;
+      return 0;
     }
 
     // Transaction found in network!
@@ -408,6 +424,7 @@ async function processTransactionSubmission(submission: any): Promise<void> {
 
     if (wasPending) {
       logger.info(`Transaction ${submission.txHash} confirmed in network!`);
+      eventsDetected = 1;
 
       await cds.tx(async (tx: any) => {
         // Update submission status to CONFIRMED
@@ -418,7 +435,7 @@ async function processTransactionSubmission(submission: any): Promise<void> {
               lastChecked: new Date().toISOString(),
               confirmations: (txInfo as any).confirmations || 0,
             })
-            .where({ ID: submission.ID })
+            .where({ txHash: submission.txHash })
         );
 
         // Create blockchain event
@@ -426,7 +443,7 @@ async function processTransactionSubmission(submission: any): Promise<void> {
           INSERT.into("odatano.watch.BlockchainEvent").entries({
             type: "TX_CONFIRMED",
             txHash: submission.txHash,
-            submission_ID: submission.ID,
+            submission_txHash: submission.txHash,
             blockNumber: (txInfo as any).blockHeight,
             blockHash: (txInfo as any).blockHash,
             payload: JSON.stringify({
@@ -455,7 +472,7 @@ async function processTransactionSubmission(submission: any): Promise<void> {
               lastChecked: new Date().toISOString(),
               confirmations: (txInfo as any).confirmations || 0,
             })
-            .where({ ID: submission.ID })
+            .where({ txHash: submission.txHash })
         );
       });
     }
@@ -463,6 +480,8 @@ async function processTransactionSubmission(submission: any): Promise<void> {
   } catch (err) {
     logger.error(`Error processing transaction ${submission.txHash}:`, err);
   }
+  
+  return eventsDetected;
 }
 
 /**
@@ -483,3 +502,32 @@ export function getStatus(): {
     config: config.get(),
   };
 }
+
+/**
+ * Manual Poll - Trigger a one-time polling cycle
+ * @returns Number of events detected
+ */
+export async function manualPoll(): Promise<number> {
+  const logger = cds.log(COMPONENT_NAME);
+  logger.info("Manual poll triggered");
+  
+  let eventsDetected = 0;
+  
+  try {
+    // Poll watched addresses
+    const addressEvents = await pollWatchedAddresses();
+    eventsDetected += addressEvents || 0;
+    
+    // Poll transaction submissions
+    const txEvents = await pollTransactionSubmissions();
+    eventsDetected += txEvents || 0;
+    
+    logger.info({ eventsDetected }, "Manual poll completed");
+  } catch (err) {
+    logger.error("Error during manual poll:", err);
+    throw err;
+  }
+  
+  return eventsDetected;
+}
+

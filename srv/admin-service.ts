@@ -1,292 +1,361 @@
-import cds from "@sap/cds";
+import cds, { Request } from "@sap/cds";
 const { SELECT, INSERT, UPDATE } = cds.ql;
 import * as watcher from "../src/watcher";
+import { rejectMissing, rejectInvalid } from './utils/errors';
+import { isValidBech32Address, isValidNetwork, isTxHash, isNonEmptyString } from './utils/validators';
+import { handleRequest } from './utils/backend-request-handler';
+import logger from './utils/logger';
+import type { WatchedAddress, TransactionSubmission } from '../@cds-models/CardanoWatcherAdminService';
 
-interface WatcherStatus {
-  isRunning: boolean;
-  addressPolling: boolean;
-  transactionPolling: boolean;
-  mempoolPolling: boolean;
-  network: string;
-  pollingIntervals: {
-    address: number;
-    transaction: number;
-    mempool: number;
-  };
-  watchCounts: {
-    addresses: number;
-    newtransactions: number;
-    submissions: number;
-  };
-}
+const COMPONENT_NAME = '[CardanoWatcherAdminService]';
 
-export default class CardanoWatcherAdminService {
-  entities: any;
-  on: any;
+/**
+ * Cardano Watcher Admin Service Implementation
+ * Manages blockchain address monitoring and transaction tracking
+ */
+module.exports = (srv: cds.Service) => {
+  logger.info(`${COMPONENT_NAME} Module loaded - registering handlers`);
+  
+  const {
+    WatchedAddresses,
+    TransactionSubmissions,
+  } = require('#cds-models/CardanoWatcherAdminService');
 
-  async init(): Promise<any> {
-    const { WatchedAddresses, TransactionSubmissions, MempoolWatches } = this.entities;
+  // ---------------------------------------------------------------------------
+  // Watcher Control Actions
+  // ---------------------------------------------------------------------------
 
-    // Start watcher action (all paths)
-    this.on("startWatcher", async (req: any) => {
-      try {
-        await watcher.start();
-        return "Watcher started successfully";
-      } catch (err) {
-        const error = err as Error;
-        req.error(500, `Failed to start watcher: ${error.message}`);
-        return undefined;
-      }
+  /**
+   * Start Watcher - Start all polling paths
+   */
+  srv.on("startWatcher", async (req: Request) => {
+    logger.debug(`${COMPONENT_NAME} startWatcher action called`);
+    
+    return handleRequest(req, async () => {
+      await watcher.start();
+      logger.info("Watcher started successfully");
+      return "Watcher started successfully";
     });
+  });
 
-    // Stop watcher action (all paths)
-    this.on("stopWatcher", async (req: any) => {
-      try {
-        await watcher.stop();
-        return "Watcher stopped successfully";
-      } catch (err) {
-        const error = err as Error;
-        req.error(500, `Failed to stop watcher: ${error.message}`);
-        return undefined;
-      }
+  /**
+   * Stop Watcher - Stop all polling paths
+   */
+  srv.on("stopWatcher", async (req: Request) => {
+    logger.debug(`${COMPONENT_NAME} stopWatcher action called`);
+    
+    return handleRequest(req, async () => {
+      await watcher.stop();
+      logger.info("Watcher stopped successfully");
+      return "Watcher stopped successfully";
     });
+  });
 
-    // Start individual polling paths
-    this.on("startAddressPolling", async (req: any) => {
-      try {
-        await watcher.startAddressPolling();
-        return "Address polling started successfully";
-      } catch (err) {
-        const error = err as Error;
-        req.error(500, `Failed to start address polling: ${error.message}`);
-        return undefined;
-      }
+  /**
+   * Start Address Polling
+   */
+  srv.on("startAddressPolling", async (req: Request) => {
+    logger.debug(`${COMPONENT_NAME} startAddressPolling action called`);
+    
+    return handleRequest(req, async () => {
+      await watcher.startAddressPolling();
+      logger.info("Address polling started");
+      return "Address polling started";
     });
+  });
 
-    this.on("startTransactionPolling", async (req: any) => {
-      try {
-        await watcher.startTransactionPolling();
-        return "Transaction polling started successfully";
-      } catch (err) {
-        const error = err as Error;
-        req.error(500, `Failed to start transaction polling: ${error.message}`);
-        return undefined;
-      }
+  /**
+   * Start Transaction Polling
+   */
+  srv.on("startTransactionPolling", async (req: Request) => {
+    logger.debug(`${COMPONENT_NAME} startTransactionPolling action called`);
+    
+    return handleRequest(req, async () => {
+      await watcher.startTransactionPolling();
+      logger.info("Transaction polling started");
+      return "Transaction polling started";
     });
+  });
 
-    // Stop individual polling paths
-    this.on("stopAddressPolling", async (req: any) => {
-      try {
-        await watcher.stopAddressPolling();
-        return "Address polling stopped successfully";
-      } catch (err) {
-        const error = err as Error;
-        req.error(500, `Failed to stop address polling: ${error.message}`);
-        return undefined;
-      }
+  /**
+   * Stop Address Polling
+   */
+  srv.on("stopAddressPolling", async (req: Request) => {
+    logger.debug(`${COMPONENT_NAME} stopAddressPolling action called`);
+    
+    return handleRequest(req, async () => {
+      await watcher.stopAddressPolling();
+      logger.info("Address polling stopped");
+      return "Address polling stopped";
     });
+  });
 
-    this.on("stopTransactionPolling", async (req: any) => {
-      try {
-        await watcher.stopTransactionPolling();
-        return "Transaction polling stopped successfully";
-      } catch (err) {
-        const error = err as Error;
-        req.error(500, `Failed to stop transaction polling: ${error.message}`);
-        return undefined;
-      }
+  /**
+   * Stop Transaction Polling
+   */
+  srv.on("stopTransactionPolling", async (req: Request) => {
+    logger.debug(`${COMPONENT_NAME} stopTransactionPolling action called`);
+    
+    return handleRequest(req, async () => {
+      await watcher.stopTransactionPolling();
+      logger.info("Transaction polling stopped");
+      return "Transaction polling stopped";
     });
+  });
 
-    // Get watcher status
-    this.on("getWatcherStatus", async (req: any): Promise<WatcherStatus> => {
+  /**
+   * Get Watcher Status
+   */
+  srv.on("getWatcherStatus", async (req: Request) => {
+    logger.debug(`${COMPONENT_NAME} getWatcherStatus action called`);
+    
+    return handleRequest(req, async (db: any) => {
       const status = watcher.getStatus();
       
       // Count active watches
-      const [addressCount, submissionCount, mempoolCount] = await Promise.all([
-        cds.tx(req, (tx: any) => tx.run(SELECT.from(WatchedAddresses).where({ active: true }))),
-        cds.tx(req, (tx: any) => tx.run(SELECT.from(TransactionSubmissions).where({ active: true }))),
-        cds.tx(req, (tx: any) => tx.run(SELECT.from(MempoolWatches).where({ active: true }))),
+      const [addressCount, submissionCount] = await Promise.all([
+        db.run(SELECT.from(WatchedAddresses).where({ active: true })),
+        db.run(SELECT.from(TransactionSubmissions).where({ active: true })),
       ]);
+
+      logger.debug({ 
+        addresses: Array.isArray(addressCount) ? addressCount.length : 0,
+        submissions: Array.isArray(submissionCount) ? submissionCount.length : 0 
+      }, "Active watch counts");
 
       return {
         isRunning: status.isRunning,
         addressPolling: status.addressPolling,
         transactionPolling: status.transactionPolling,
         mempoolPolling: status.mempoolPolling,
-        network: status.config.network || "mainnet",
+        network: status.config.network || "preview",
         pollingIntervals: {
           address: status.config.addressPolling?.interval || 30,
           transaction: status.config.transactionPolling?.interval || 60,
           mempool: status.config.mempoolPolling?.interval || 10,
         },
         watchCounts: {
-          addresses: addressCount?.length || 0,
-          submissions: submissionCount?.length || 0,
-          newtransactions: mempoolCount?.length || 0,
+          addresses: Array.isArray(addressCount) ? addressCount.length : 0,
+          submissions: Array.isArray(submissionCount) ? submissionCount.length : 0,
+          newTransactions: 0,
         },
       };
     });
+  });
 
-    // Add watched address
-    this.on("addWatchedAddress", async (req: any) => {
-      const { address, description, network } = req.data;
+  // ---------------------------------------------------------------------------
+  // Address Monitoring Actions
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Add Watched Address
+   * Adds a new Cardano address to monitor for blockchain activity
+   */
+  srv.on("addWatchedAddress", async (req: Request) => {
+    logger.debug(`${COMPONENT_NAME} addWatchedAddress action called`);
+    const { address, description, network } = req.data;
+    
+    // Validate inputs
+    if (!address) return rejectMissing('addWatchedAddress', 'address');
+    if (!isValidBech32Address(address)) {
+      return rejectInvalid('addWatchedAddress', 'Invalid Bech32 address format', 'address');
+    }
+    if (network && !isValidNetwork(network)) {
+      return rejectInvalid('addWatchedAddress', 'Invalid network (must be mainnet, preview, or preprod)', 'network');
+    }
+
+    return handleRequest(req, async (db: any) => {
+      // Check if already exists
+      const existing = await db.run(SELECT.one.from(WatchedAddresses).where({ address }));
+      if (existing) {
+        return rejectInvalid('addWatchedAddress', `Address ${address} is already being watched`, 'address');
+      }
+
+      // Create new watch entry
+      const watchedAddressEntry: WatchedAddress = {
+        address,
+        description: description || null,
+        network: network || watcher.getStatus().config.network || 'preview',
+        active: true,
+        lastCheckedBlock: null,
+      };
+
+      await db.run(INSERT.into(WatchedAddresses).entries(watchedAddressEntry));
+
+      logger.info({ address }, "Added watched address");
+
+      return watchedAddressEntry;
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Transaction Tracking Actions
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Submit and Track Transaction
+   * Submits a transaction hash for status tracking
+   */
+  srv.on("submitAndTrackTransaction", async (req: Request) => {
+    logger.debug(`${COMPONENT_NAME} submitAndTrackTransaction action called`);
+    const { txHash, description, network, metadata } = req.data;
+    
+    // Validate inputs
+    if (!txHash) return rejectMissing('submitAndTrackTransaction', 'txHash');
+    if (!isTxHash(txHash)) {
+      return rejectInvalid('submitAndTrackTransaction', 'Invalid transaction hash format', 'txHash');
+    }
+    if (network && !isValidNetwork(network)) {
+      return rejectInvalid('submitAndTrackTransaction', 'Invalid network', 'network');
+    }
+
+    return handleRequest(req, async (db: any) => {
+      // Check if already exists
+      const existing = await db.run(SELECT.one.from(TransactionSubmissions).where({ txHash }));
+      if (existing) {
+        return rejectInvalid('submitAndTrackTransaction', `Transaction ${txHash} is already being tracked`, 'txHash');
+      }
       
-      if (!address) {
-        req.error(400, "Address is required");
-        return;
-      }
+      // Create new submission entry
+      const submissionEntry: TransactionSubmission = {
+        txHash,
+        description: description || null,
+        network: network || watcher.getStatus().config.network || 'preview',
+        active: true,
+        currentStatus: "PENDING",
+        confirmations: 0,
+        metadata: metadata || null,
+        submittedBy: req.user?.id || "system",
+      };
 
-      const result = await cds.tx(req, async (tx: any) => {
-        // Check if address already exists
-        const existing = await tx.run(
-          SELECT.one.from(WatchedAddresses).where({ address })
-        );
-
-        if (existing) {
-          req.error(409, `Address ${address} is already being watched`);
-          return;
-        }
-
-        // Insert new watched address
-        const inserted = await tx.run(
-          INSERT.into(WatchedAddresses).entries({
-            address,
-            description: description || null,
-            network: network || watcher.getStatus().config.network,
-            active: true,
-            lastCheckedBlock: null,
-          })
-        );
-
-        return tx.run(SELECT.one.from(WatchedAddresses).where({ ID: inserted.ID }));
-      });
-
-      return result;
-    });
-
-    // Submit and track transaction
-    this.on("submitAndTrackTransaction", async (req: any) => {
-      const { txHash, description, network, metadata } = req.data;
+      await db.run(INSERT.into(TransactionSubmissions).entries(submissionEntry));
       
-      if (!txHash) {
-        req.error(400, "txHash is required");
-        return;
-      }
-
-      const result = await cds.tx(req, async (tx: any) => {
-        // Check if already tracking
-        const existing = await tx.run(
-          SELECT.one.from(TransactionSubmissions).where({ txHash })
-        );
-
-        if (existing) {
-          req.error(409, `Transaction ${txHash} is already being tracked`);
-          return;
-        }
-
-        // Insert new submission
-        const inserted = await tx.run(
-          INSERT.into(TransactionSubmissions).entries({
-            txHash,
-            description: description || null,
-            network: network || watcher.getStatus().config.network,
-            active: true,
-            currentStatus: "PENDING",
-            confirmations: 0,
-            metadata: metadata || null,
-            submittedBy: req.user?.id || "system",
-          })
-        );
-
-        return tx.run(SELECT.one.from(TransactionSubmissions).where({ ID: inserted.ID }));
-      });
-
-      return result;
-    });
-
-    // Update transaction status
-    this.on("updateTransactionStatus", async (req: any) => {
-      const { ID, status } = req.data;
-
-      if (!ID || !status) {
-        req.error(400, "ID and status are required");
-        return;
-      }
-
-      const result = await cds.tx(req, async (tx: any) => {
-        await tx.run(
-          UPDATE.entity(TransactionSubmissions)
-            .set({ currentStatus: status, lastChecked: new Date().toISOString() })
-            .where({ ID })
-        );
-
-        return tx.run(SELECT.one.from(TransactionSubmissions).where({ ID }));
-      });
-
-      return result;
-    });
-
-    // Add mempool watch
-    this.on("addMempoolWatch", async (req: any) => {
-      const { watchType, criteria, description, network, alertThreshold } = req.data;
+      logger.info({ txHash }, "Submitted and tracking transaction");
       
-      if (!watchType || !criteria) {
-        req.error(400, "watchType and criteria are required");
-        return;
+      return submissionEntry;
+    });
+  });
+
+  /**
+   * Update Transaction Status
+   * Manually update the status of a tracked transaction
+   */
+  srv.on("updateTransactionStatus", async (req: Request) => {
+    logger.debug(`${COMPONENT_NAME} updateTransactionStatus action called`);
+    const { txHash, status } = req.data;
+
+    // Validate inputs
+    if (!txHash) return rejectMissing('updateTransactionStatus', 'txHash');
+    if (!status) return rejectMissing('updateTransactionStatus', 'status');
+    if (!isTxHash(txHash)) {
+      return rejectInvalid('updateTransactionStatus', 'Invalid transaction hash format', 'txHash');
+    }
+
+    const validStatuses = ['PENDING', 'CONFIRMED', 'FAILED'];
+    if (!validStatuses.includes(status.toUpperCase())) {
+      return rejectInvalid('updateTransactionStatus', `Invalid status (must be one of: ${validStatuses.join(', ')})`, 'status');
+    }
+
+    return handleRequest(req, async (db: any) => {
+      const result = await db.run(
+        UPDATE.entity(TransactionSubmissions)
+          .set({ currentStatus: status.toUpperCase(), lastChecked: new Date().toISOString() })
+          .where({ txHash })
+      );
+      
+      if (!result || result === 0) {
+        return rejectInvalid('updateTransactionStatus', `Transaction ${txHash} not found`, 'txHash');
       }
 
-      const result = await cds.tx(req, async (tx: any) => {
-        const inserted = await tx.run(
-          INSERT.into(MempoolWatches).entries({
-            watchType,
-            criteria,
-            description: description || null,
-            network: network || watcher.getStatus().config.network,
-            active: true,
-            alertThreshold: alertThreshold || 1,
-          })
-        );
-
-        return tx.run(SELECT.one.from(MempoolWatches).where({ ID: inserted.ID }));
-      });
-
-      return result;
+      logger.info({ txHash, status }, "Updated transaction status");
+      
+      // Return updated record
+      return await db.run(SELECT.one.from(TransactionSubmissions).where({ txHash }));
     });
+  });
 
-    // Remove watch (generic)
-    this.on("removeWatch", async (req: any) => {
-      const { watchType, ID } = req.data;
+  // ---------------------------------------------------------------------------
+  // Watch Management Actions
+  // ---------------------------------------------------------------------------
 
-      if (!watchType || !ID) {
-        req.error(400, "watchType and ID are required");
-        return false;
+  /**
+   * Remove Watch
+   * Remove an address or transaction from monitoring
+   */
+  srv.on("removeWatch", async (req: Request) => {
+    logger.debug(`${COMPONENT_NAME} removeWatch action called`);
+    const { watchType, key } = req.data;
+
+    // Validate inputs
+    if (!watchType) return rejectMissing('removeWatch', 'watchType');
+    if (!key) return rejectMissing('removeWatch', 'key');
+    if (!isNonEmptyString(watchType)) {
+      return rejectInvalid('removeWatch', 'watchType must be a non-empty string', 'watchType');
+    }
+    if (!isNonEmptyString(key)) {
+      return rejectInvalid('removeWatch', 'key must be a non-empty string', 'key');
+    }
+
+    return handleRequest(req, async (db: any) => {
+      let entity;
+      let whereClause;
+      
+      switch (watchType.toLowerCase()) {
+        case "address":
+          if (!isValidBech32Address(key)) {
+            return rejectInvalid('removeWatch', 'Invalid address format', 'key');
+          }
+          entity = WatchedAddresses;
+          whereClause = { address: key };
+          break;
+        case "transaction":
+          if (!isTxHash(key)) {
+            return rejectInvalid('removeWatch', 'Invalid transaction hash format', 'key');
+          }
+          entity = TransactionSubmissions;
+          whereClause = { txHash: key };
+          break;
+        default:
+          return rejectInvalid('removeWatch', `Unknown watch type: ${watchType} (must be 'address' or 'transaction')`, 'watchType');
       }
 
-      await cds.tx(req, async (tx: any) => {
-        let entity;
-        switch (watchType.toLowerCase()) {
-          case "address":
-            entity = WatchedAddresses;
-            break;
-          case "transaction":
-            entity = TransactionSubmissions;
-            break;
-          case "mempool":
-            entity = MempoolWatches;
-            break;
-          default:
-            req.error(400, `Unknown watch type: ${watchType}`);
-            return;
-        }
+      const result = await db.run(
+        UPDATE.entity(entity)
+          .set({ active: false })
+          .where(whereClause)
+      );
 
-        await tx.run(
-          UPDATE.entity(entity)
-            .set({ active: false })
-            .where({ ID })
-        );
-      });
-
-      return true;
+      if (!result || result === 0) {
+        return rejectInvalid('removeWatch', `${watchType} ${key} not found`, 'key');
+      }
+      
+      logger.info({ watchType, key }, "Removed watch");
+      
+      return { value: true };
     });
-}
-}
+  });
+
+  /**
+   * Manual Poll
+   * Trigger a manual polling cycle for all active watches
+   */
+  srv.on("manualPoll", async (req: Request) => {
+    logger.debug(`${COMPONENT_NAME} manualPoll action called`);
+    
+    return handleRequest(req, async () => {
+      // Trigger manual poll
+      const eventsDetected = await watcher.manualPoll();
+      
+      logger.info({ eventsDetected }, "Manual poll completed");
+      
+      return {
+        success: true,
+        message: "Manual poll completed successfully",
+        eventsDetected: eventsDetected || 0,
+      };
+    });
+  });
+
+  logger.info(`${COMPONENT_NAME} All handlers registered`);
+};
+

@@ -6,3 +6,6 @@ coverage/
 .env
 .DS_Store
 build/
+gen/
+.vscode/
+@cds-models

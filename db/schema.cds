@@ -1,76 +1,265 @@
 namespace odatano.watch;
 
-using { cuid, managed } from '@sap/cds/common';
+// -----------------------------------------------------
+// Basic Cardano Types
+// -----------------------------------------------------
+@title      : 'Blake2b256'
+@description: '32 bytes Blake2b hash as hex string'
+type Blake2b256    : String(64);
 
-/**
- * Stores information about watched blockchain addresses
- */
-entity WatchedAddress : cuid, managed {
-  address          : String(100) not null;
-  description      : String(500);
-  active           : Boolean default true;
-  lastCheckedBlock : Integer64;
-  network          : String(20) default 'preview'; // mainnet, preview, preprod
+@title      : 'Bech32 Address'
+@description: 'Bech32 encoded address string'
+type Bech32        : String(120);
+
+@title      : 'Lovelace'
+@description: 'Amount of ADA in lovelace (1 ADA = 1_000_000 lovelace)'
+type Lovelace      : Decimal(20, 0);
+
+// -----------------------------------------------------
+// Entities
+// -----------------------------------------------------
+
+@title      : 'Watched Address Entity'
+@description: 'Stores information about watched blockchain addresses for monitoring'
+entity WatchedAddress {
+
+    @title      : 'Address (Key)'
+    @description: 'The Bech32 encoded address to watch'
+    key address          : Bech32 not null;
+
+    @title      : 'Description'
+    @description: 'Optional description of what this address is for'
+        description      : String(500);
+
+    @title      : 'Active Status'
+    @description: 'Whether this address is currently being watched'
+        active           : Boolean default true;
+
+    @title      : 'Last Checked Block'
+    @description: 'Block number of the last time this address was checked'
+        lastCheckedBlock : Integer64;
+
+    @title      : 'Network'
+    @description: 'The Cardano network (mainnet, preview, preprod)'
+        network          : String(20) default 'preview';
+
+    @title      : 'Events'
+    @description: 'Blockchain events related to this address'
+        events           : Composition of many BlockchainEvent
+                               on events.address = $self;
+
+    @title      : 'Has Events'
+    @description: 'Indicates if address has associated events'
+        hasEvents        : Boolean default false;
 }
 
-/**
- * Stores submitted transactions to check if they are in the network
- */
-entity TransactionSubmission : cuid, managed {
-  txHash           : String(100) not null;
-  description      : String(500);
-  active           : Boolean default true;
-  currentStatus    : String(20); // PENDING, CONFIRMED
-  lastChecked      : Timestamp;
-  confirmations    : Integer;
-  network          : String(20) default 'preview'; // mainnet, preview, preprod
-  submittedBy      : String(100); // User/Service that submitted
-  metadata         : LargeString; // Additional tracking info
+@title      : 'Transaction Submission Entity'
+@description: 'Stores submitted transactions to track their confirmation status'
+entity TransactionSubmission {
+
+    @title      : 'Transaction Hash (Key)'
+    @description: 'The unique transaction hash as hex string'
+    key txHash           : Blake2b256 not null;
+
+    @title      : 'Description'
+    @description: 'Optional description of this transaction submission'
+        description      : String(500);
+
+    @title      : 'Active Status'
+    @description: 'Whether this submission is currently being tracked'
+        active           : Boolean default true;
+
+    @title      : 'Current Status'
+    @description: 'Current status of the transaction (PENDING, CONFIRMED, FAILED)'
+        currentStatus    : String(20) default 'PENDING';
+
+    @title      : 'Last Checked'
+    @description: 'Timestamp of last status check'
+        lastChecked      : Timestamp;
+
+    @title      : 'Confirmations'
+    @description: 'Number of block confirmations'
+        confirmations    : Integer default 0;
+
+    @title      : 'Network'
+    @description: 'The Cardano network (mainnet, preview, preprod)'
+        network          : String(20) default 'preview';
+
+    @title      : 'Submitted By'
+    @description: 'User or service that submitted this transaction'
+        submittedBy      : String(100);
+
+    @title      : 'Metadata'
+    @description: 'Additional tracking metadata as JSON'
+        metadata         : LargeString;
+
+    @title      : 'Events'
+    @description: 'Blockchain events related to this submission'
+        events           : Composition of many BlockchainEvent
+                               on events.submission = $self;
+
+    @title      : 'Has Events'
+    @description: 'Indicates if submission has associated events'
+        hasEvents        : Boolean default false;
 }
 
-/**
- * Stores detected blockchain events
- */
-entity BlockchainEvent : cuid, managed {
-  type             : String(50) not null;  // TX_CONFIRMED, ADDRESS_ACTIVITY, etc.
-  description      : String(500);
-  blockNumber      : Integer64;
-  blockHash        : String(100);
-  txHash           : String(100);
-  address          : Association to WatchedAddress;
-  submission       : Association to TransactionSubmission;
-  payload          : LargeString;
-  processed        : Boolean default false;
-  processedAt      : Timestamp;
-  error            : LargeString;
-  network          : String(20) default 'preview'; // mainnet, preview, preprod
+@title      : 'Blockchain Event Entity'
+@description: 'Stores detected blockchain events from watched addresses and submissions'
+entity BlockchainEvent {
+
+    @title      : 'Event ID (Key)'
+    @description: 'Unique identifier for the event'
+    key id               : UUID not null;
+
+    @title      : 'Event Type'
+    @description: 'Type of event (TX_CONFIRMED, ADDRESS_ACTIVITY, etc.)'
+        type             : String(50) not null;
+
+    @title      : 'Description'
+    @description: 'Human-readable description of the event'
+        description      : String(500);
+
+    @title      : 'Block Number'
+    @description: 'Block number where the event occurred'
+        blockNumber      : Integer64;
+
+    @title      : 'Block Hash'
+    @description: 'Block hash where the event occurred'
+        blockHash        : Blake2b256;
+
+    @title      : 'Transaction Hash'
+    @description: 'Transaction hash associated with the event'
+        txHash           : Blake2b256;
+
+    @title      : 'Address Association'
+    @description: 'The watched address this event is related to'
+        address          : Association to WatchedAddress
+                               on address.address = $self.address_address;
+
+    @title      : 'Address Key'
+    @description: 'Foreign key to watched address'
+        address_address  : Bech32;
+
+    @title      : 'Submission Association'
+    @description: 'The transaction submission this event is related to'
+        submission       : Association to TransactionSubmission
+                               on submission.txHash = $self.submission_txHash;
+
+    @title      : 'Submission Key'
+    @description: 'Foreign key to transaction submission'
+        submission_txHash: Blake2b256;
+
+    @title      : 'Event Payload'
+    @description: 'Event payload data as JSON'
+        payload          : LargeString;
+
+    @title      : 'Processed Status'
+    @description: 'Whether this event has been processed'
+        processed        : Boolean default false;
+
+    @title      : 'Processed At'
+    @description: 'Timestamp when the event was processed'
+        processedAt      : Timestamp;
+
+    @title      : 'Error'
+    @description: 'Error message if event processing failed'
+        error            : LargeString;
+
+    @title      : 'Network'
+    @description: 'The Cardano network (mainnet, preview, preprod)'
+        network          : String(20) default 'preview';
+
+    @title      : 'Created At'
+    @description: 'Timestamp when event was detected'
+        createdAt        : Timestamp @cds.on.insert: $now;
 }
 
-/**
- * Stores transaction details
- */
-entity Transaction : cuid, managed {
-  txHash           : String(100) not null;
-  blockNumber      : Integer64;
-  blockHash        : String(100);
-  sender           : String(100);
-  receiver         : String(100);
-  amount           : Decimal(20,6);
-  fee              : Decimal(20,6);
-  metadata         : LargeString;
-  assets           : LargeString; // JSON array of native assets
-  status           : String(20);  // CONFIRMED, PENDING, FAILED
-  network          : String(20) default 'preview'; // mainnet, preview, preprod
-  inMempool        : Boolean default false;
-  mempoolEnteredAt : Timestamp;
-  confirmedAt      : Timestamp;
+@title      : 'Transaction Entity'
+@description: 'Stores detailed transaction information from the blockchain'
+entity Transaction {
+
+    @title      : 'Transaction ID (Key)'
+    @description: 'Internal unique identifier'
+    key ID               : UUID not null;
+
+    @title      : 'Transaction Hash'
+    @description: 'The unique transaction hash as hex string'
+        txHash           : Blake2b256 not null;
+
+    @title      : 'Block Number'
+    @description: 'Block number containing this transaction'
+        blockNumber      : Integer64;
+
+    @title      : 'Block Hash'
+    @description: 'Block hash containing this transaction'
+        blockHash        : Blake2b256;
+
+    @title      : 'Sender Address'
+    @description: 'Sender address in Bech32 format'
+        sender           : Bech32;
+
+    @title      : 'Receiver Address'
+    @description: 'Receiver address in Bech32 format'
+        receiver         : Bech32;
+
+    @title      : 'Amount'
+    @description: 'Amount transferred in ADA'
+        amount           : Lovelace;
+
+    @title      : 'Fee'
+    @description: 'Transaction fee in lovelace'
+        fee              : Lovelace;
+
+    @title      : 'Metadata'
+    @description: 'Transaction metadata as JSON'
+        metadata         : LargeString;
+
+    @title      : 'Native Assets'
+    @description: 'Native assets transferred as JSON array'
+        assets           : LargeString;
+
+    @title      : 'Status'
+    @description: 'Transaction status (CONFIRMED, PENDING, FAILED)'
+        status           : String(20) default 'PENDING';
+
+    @title      : 'Network'
+    @description: 'The Cardano network (mainnet, preview, preprod)'
+        network          : String(20) default 'preview';
+
+    @title      : 'In Mempool'
+    @description: 'Whether transaction is currently in mempool'
+        inMempool        : Boolean default false;
+
+    @title      : 'Mempool Entered At'
+    @description: 'Timestamp when transaction entered mempool'
+        mempoolEnteredAt : Timestamp;
+
+    @title      : 'Confirmed At'
+    @description: 'Timestamp when transaction was confirmed'
+        confirmedAt      : Timestamp;
+
+    @title      : 'Created At'
+    @description: 'Timestamp when transaction record was created'
+        createdAt        : Timestamp @cds.on.insert: $now;
 }
 
-/**
- * Configuration for watcher behavior
- */
-entity WatcherConfig : cuid, managed {
-  key configKey    : String(100) not null;
-  value            : LargeString;
-  description      : String(500);
+@title      : 'Watcher Configuration Entity'
+@description: 'Configuration settings for watcher behavior'
+entity WatcherConfig {
+
+    @title      : 'Config Key (Key)'
+    @description: 'Configuration key identifier'
+    key configKey        : String(100) not null;
+
+    @title      : 'Value'
+    @description: 'Configuration value as JSON'
+        value            : LargeString;
+
+    @title      : 'Description'
+    @description: 'Human-readable description of this setting'
+        description      : String(500);
+
+    @title      : 'Updated At'
+    @description: 'Timestamp of last update'
+        updatedAt        : Timestamp @cds.on.insert: $now @cds.on.update: $now;
 }

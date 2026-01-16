@@ -1,514 +1,232 @@
-# Architecture of the Cardano Watcher Plugin
+# Architecture
+
+Technical internals of the Cardano Watcher Plugin.
 
 ## Overview
 
-The Cardano Watcher Plugin is designed as a CAP plugin that can be seamlessly integrated into existing CAP applications. It monitors the Cardano blockchain for various events including:
+CAP plugin that monitors Cardano blockchain via Blockfrost API. Uses two independent polling paths: address monitoring (30s) and transaction tracking (60s). Events are emitted via CAP event bus.
 
-- **Address Monitoring**: Watch specific addresses for incoming/outgoing transactions
-- **Transaction Status Tracking**: Monitor submitted transactions for confirmation status
-- **Mempool Monitoring**: Track pending transactions in the mempool
-- **Smart Contract Events**: Monitor script executions and contract interactions
-- **Custom Blockchain Events**: Extensible for any blockchain-related events
-
-All detected events are emitted via the CAP event bus and can be consumed by other services within the CAP application.
-
-## Component Architecture
+## Component Diagram
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│                       CAP Application                          │
-│                                                                │
-│ ┌────────────────────────────────────────────────────────────┐ │
-│ │                 Your Business Services                     │ │
-│ │                                                            │ │
-│ │        TransactionService:                                 │ │
-│ │       ┌─────────────────────────────────────────────┐      │ │
-│ │       │ cds.on("cardano.submitTransaction", ...)    │      │ │
-│ │       │   → Transaction submission                  │      │ │
-│ │       │   → Update Records                          │      │ │
-│ │       │   → Subscribe to events                     │      │ │
-│ │       │   → Handle event receipts                   │      │ │
-│ │       └─────────────────────────────────────────────┘      │ │
-│ │                             ↑                              │ │
-│ │                             │ Event Listener               │ │
-│ └─────────────────────────────┼──────────────────────────────┘ │
-│                               │                                │
-│ ╔═════════════════════════════╧══════════════════════════════╗ │
-│ ║             CAP Event Bus (cds.emit / cds.on)              ║ │
-│ ╚═════════════════════════════╤══════════════════════════════╝ │
-│                               │ Event Emitter                  │
-│                               ↓                                │
-│  ┌───────────────────────────────────────────────────────────┐ │
-│  │            Cardano Watcher Plugin                         │ │
-│  │                                                           │ │
-│  │   ┌────────────────────────────────────────────┐          │ │
-│  │   │ Watcher (watcher.ts)                       │          │ │
-│  │   │                                            │          │ │
-│  │   │ pollBlockchain() {                         │          │ │
-│  │   │   1. Check watched Submission TX           │          │ │
-│  │   │   2. try to fetch new transaction          │ ──┐      │ │
-│  │   │   3. store result in watcher DB            │   │      │ │
-│  │   │   4. cds.emit("cardano.newTransactions", { │   │      │ │
-│  │   │        address, count, transactions        │   │      │ │
-│  │   │      })                                    │   │      │ │
-│  │   │ }                                          │   │      │ │
-│  │   └────────────────────────────────────────────┘   │      │ │
-│  │              │                   │                 │      │ │
-│  │   ┌──────────┴───────┐   ┌───────┴────────┐        │      │ │
-│  │   │ Config Manager   │   │   Blockfrost   │        │      │ │
-│  │   │ (config.ts)      │   │                │ ───────┘      │ │
-│  │   │                  │   │                │               │ │
-│  │   └──────────────────┘   └────────────────┘               │ │
-│  └───────────────────────────────────────────────────────────┘ │
-│                              ↓                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │              CDS Database Layer                         │   │
-│  │   • WatchedAddress (active addresses to monitor)        │   │
-│  │   • BlockchainEvent (detected events)                   │   │
-│  │   • Transaction (transaction details)                   │   │
-│  └─────────────────────────────────────────────────────────┘   │
-└────────────────────────────────────────────────────────────────┘
-                               ↓
-                    ┌────────────────────────┐
-                    │  Cardano Blockchain    │
-                    │   (via Blockfrost API) │
-                    └────────────────────────┘
-
-Event Flow:
-──────────
-1. Watcher polls blockchain every X seconds
-2. Finds new transactions → Stores in DB
-3. Emits: cds.emit("cardano.newTransactions", {...})
-4. CAP Event Bus distributes to all listeners
-5. Your services: cds.on("cardano.newTransactions", handler)
-6. Business logic executes asynchronously
+┌───────────────────────────────────────────┐
+│          Your CAP Services                │
+│  cds.on("cardano.newTransactions")        │
+│  cds.on("cardano.transactionConfirmed")   │
+└──────────────┬────────────────────────────┘
+               │ Events
+         ╔═════╧══════════╗
+         ║  CAP Event Bus ║
+         ╚═════╤══════════╝
+               │
+┌──────────────┴────────────────────────────┐
+│     Cardano Watcher Plugin                │
+│                                           │
+│  Watcher (watcher.ts)                     │
+│  ├─ pollWatchedAddresses() [30s]          │
+│  └─ pollTransactionSubmissions() [60s]    │
+│                                           │
+│  Blockfrost API (blockfrost.ts)           │
+│  Config Manager (config.ts)               │
+└───────────────┬───────────────────────────┘
+                │
+         ┌──────┴──────┐
+         │  Database   │
+         └─────────────┘
 ```
 
 ## Core Modules
 
-### 1. cds-plugin.ts (Entry Point)
+### cds-plugin.ts
 
-- **Purpose**: Automatic entry point for CAP
-- **Function**: 
-  - Checks if `cds.env.cardanoWatcher` is configured
-  - Initializes plugin automatically on server start
-  - Prevents loading during build/compile operations
+Entry point. Auto-loaded by CAP if `cds.env.cardanoWatcher` exists.
 
 ```typescript
-// Automatically loaded by CAP
-if (Object.keys(cds.env.cardanoWatcher ?? {}).length) {
+const isServe = (cds as any).cli?.command === "serve";
+const isBuild = (cds as any).build?.register;
+
+if (isBuild && !isServe) {
+  module.exports = {};
+} else if (Object.keys(cds.env.cardanoWatcher ?? {}).length) {
   module.exports = cardanoWatcher.initialize();
 }
 ```
 
-### 2. src/index.ts (Main Module)
+### src/index.ts
 
-- **Purpose**: Main logic of the plugin
-- **Responsibilities**:
-  - Plugin initialization
-  - Coordination between Config and Watcher
-  - Providing the Public API
-  - Event orchestration
-  - Type exports
+Main module. Orchestrates config, watcher, and API.
 
-**Lifecycle**:
-```
-initialize() → config.initialize() → watcher.setup() → ready
-```
+**Lifecycle**: `initialize()` → `config.initialize()` → `watcher.setup()` → `ready`
 
-### 3. src/config.ts (Configuration Manager)
-
-- **Purpose**: Central configuration management with TypeScript types
-- **Sources** (descending priority):
-  1. `cds.env.cardanoWatcher` (from package.json)
-  2. Direct options in `initialize()`
-  3. Defaults
-
-**Type-safe configuration**:
+**Exports**:
 ```typescript
-interface CardanoWatcherConfig {
-  network?: "mainnet" | "testnet" | "preview" | "preprod";
-  blockfrostApiKey?: string;
-  autoStart?: boolean;
-  
-  addressPolling?: {
-    enabled: boolean;
-    interval: number;
-  };
-  transactionPolling?: {
-    enabled: boolean;
-    interval: number;
-  };
-  mempoolPolling?: {
-    enabled: boolean;
-    interval: number;
-  };
-  // ...
-}
+export default {
+  initialize,
+  start, stop,
+  startAddressPolling, stopAddressPolling,
+  startTransactionPolling, stopTransactionPolling,
+  getStatus,
+  config: getConfig,
+};
 ```
 
-**Configuration flow**:
-```
-cds.env.cardanoWatcher (package.json)
-        ↓
-  initialize(options)
-        ↓
-    Validated Config
-```
+### src/watcher.ts
 
-### 4. src/watcher.ts (Blockchain Watcher)
+Two independent polling loops:
 
-- **Purpose**: Monitors the blockchain with full type safety
-- **Monitoring Types**:
-  - **Address Watching**: Monitors addresses for new transactions
-  - **Transaction Status**: Tracks transaction confirmations and status changes
-  - **Mempool Events**: Detects transactions entering/leaving mempool
-  - **Custom Events**: Extensible for smart contracts, NFTs, stake pool changes, etc.
+**Address Polling (30s)**:
+1. `SELECT` active `WatchedAddress`
+2. `fetchAddressTransactions(address, lastCheckedBlock)`
+3. New TXs? → `INSERT BlockchainEvent` + `Transaction` + `emit("cardano.newTransactions")`
 
-- **How it works**:
-  1. Separate polling intervals for each path (address/transaction/mempool)
-  2. Fetches active watched items from DB (addresses, submitted txs, etc.)
-  3. For each item: Query blockchain for status/updates
-  4. Stores events and changes in DB
-  5. Emits corresponding events (e.g., `cardano.newTransactions`, `cardano.transactionConfirmed`, `cardano.mempoolMatch`)
+**Transaction Polling (60s)**:
+1. `SELECT` active `TransactionSubmission` WHERE `status = "PENDING"`
+2. `getTransaction(txHash)`
+3. Found? → `UPDATE status` + `INSERT BlockchainEvent` + `emit("cardano.transactionConfirmed")`
 
-**Polling cycle**:
-```
-Three Independent Timers:
-  - Address Polling (default: 30s)
-  - Transaction Polling (default: 60s)
-  - Mempool Polling (default: 10s, disabled by default)
-    ↓
-pollWatchedAddresses() / pollTransactionSubmissions() / pollMempoolWatches()
-    ↓
-Fetch Watched Items (addresses, txs, etc.)
-    ↓
-For each item:
-  Query Blockchain API
-    ↓
-  Detect Changes/Events
-    ↓
-  Store in DB
-    ↓
-  Emit Event (cardano.*)
-```
+### src/blockfrost.ts
 
-### 5. src/blockfrost.ts (API Integration)
-
-- **Purpose**: Integration with Blockfrost API
-- **Features**:
-  - Lazy initialization
-  - Error handling
-  - Transaction parsing with TypeScript types
-  - Metadata extraction
-  - Asset handling
-
-## Data Flow
-
-### 1. Adding a Watch Target
-
-```
-User/API Call
-    ↓
-addWatchedAddress() / submitTransaction() / addMempoolWatch()
-    ↓
-DB Insert → WatchedAddress / TransactionSubmission / MempoolWatch
-    ↓
-Considered in next poll
-```
-
-### 2. Event Detection (Generic)
-
-```
-Poll Timer
-    ↓
-watcher.pollBlockchain()
-    ↓
-SELECT active WatchedAddresses
-    ↓
-For each address:
-  blockfrost.fetchAddressTransactions()
-    ↓
-  Parse transaction data
-    ↓
-  INSERT BlockchainEvent
-  INSERT Transaction
-    ↓
-  UPDATE WatchedAddress.lastCheckedBlock
-    ↓
-cds.emit("cardano.newTransactions")
-    ↓
-Consumer Services handle event
-```
-
-### 3. Event Consumption (Examples)
-
-```
-Consumer Service
-    ↓
-cds.on("cardano.newTransactions", handler)        // Address activity
-cds.on("cardano.transactionConfirmed", handler)   // TX confirmed in network  
-cds.on("cardano.mempoolMatch", handler)           // Mempool matches
-cds.on("cardano.contractEvent", handler)          // Smart contract events
-    ↓
-Receive event data with type-specific payload
-    ↓
-Business Logic
-    ↓
-Mark BlockchainEvent as processed
-```
-
-## Service Layer
-
-### CardanoWatcherAdminService
-
-OData/REST Service for administration:
-
-**Entities**:
-- `WatchedAddresses` - CRUD for watched addresses
-- `TransactionSubmissions` - CRUD for submitted transactions to track
-- `MempoolWatches` - CRUD for mempool monitoring
-- `BlockchainEvents` - Read access to all detected events
-- `Transactions` - Read access to transaction details
-
-**Actions**:
-- `startWatcher()` - Start all enabled paths
-- `stopWatcher()` - Stop all paths
-- `startAddressPolling()` - Start address polling
-- `startTransactionPolling()` - Start transaction polling
-- `startMempoolPolling()` - Start mempool polling
-- `stopAddressPolling()` - Stop address polling
-- `stopTransactionPolling()` - Stop transaction polling
-- `stopMempoolPolling()` - Stop mempool polling
-- `getWatcherStatus()` - Get status with individual path states
-- `addWatchedAddress()` - Add address to monitor
-- `submitAndTrackTransaction()` - Submit transaction and track its status
-- `addMempoolWatch()` - Monitor mempool for specific criteria
-- `removeWatch()` - Deactivate any watch item
-- `manualPoll()` - Trigger manual poll
-
-## Plugin Integration Pattern
-
-The plugin uses the CAP plugin system:
-
-1. **Automatic Registration**: Via `cds-plugin.js`
-2. **Database Integration**: Entities are automatically deployed
-3. **Service Exposure**: Admin service becomes automatically available
-4. **Event System**: Uses CDS event bus
-
-## Extensibility
-
-### Custom API Provider
-
-Instead of Blockfrost you can implement custom providers:
+Blockfrost API integration.
 
 ```typescript
-// src/providers/koios.ts
-import type { TransactionData } from "../blockfrost";
-
+export function initializeClient(config: any): any
 export async function fetchAddressTransactions(
   address: string,
   fromBlock: number | null
-): Promise<TransactionData[]> {
-  // Koios API implementation
-  return [];
+): Promise<TransactionData[]>
+export async function getTransaction(txHash: string): Promise<any>
+```
+
+## Data Flow
+
+### Address Event Detection
+
+```
+Timer (30s) → pollWatchedAddresses()
+  → SELECT WatchedAddress
+  → fetchAddressTransactions()
+  → INSERT BlockchainEvent + Transaction
+  → UPDATE lastCheckedBlock
+  → cds.emit("cardano.newTransactions")
+```
+
+### Transaction Confirmation
+
+```
+Timer (60s) → pollTransactionSubmissions()
+  → SELECT TransactionSubmission WHERE status="PENDING"
+  → getTransaction(txHash)
+  → UPDATE status="CONFIRMED"
+  → INSERT BlockchainEvent
+  → cds.emit("cardano.transactionConfirmed")
+```
+
+## Database Entities
+
+```cds
+entity WatchedAddress {
+  key ID: UUID;
+  address: String(120);
+  lastCheckedBlock: Integer64;
+  isActive: Boolean;
 }
 
-// In watcher.ts
-import * as koios from "./providers/koios";
+entity TransactionSubmission {
+  key ID: UUID;
+  txHash: String(64);
+  currentStatus: String(20);  // PENDING, CONFIRMED
+  isActive: Boolean;
+}
+
+entity BlockchainEvent {
+  key ID: UUID;
+  type: String(30);  // TRANSACTION, TX_CONFIRMED
+  txHash: String(64);
+  blockNumber: Integer64;
+  payload: String;
+}
+
+entity Transaction {
+  key ID: UUID;
+  txHash: String(64);
+  amount: Integer64;
+  fee: Integer64;
+  sender: String(120);
+  receiver: String(120);
+}
 ```
+
+## Event Payloads
+
+### cardano.newTransactions
+
+```typescript
+{
+  address: string;
+  count: number;
+  transactions: Array<{
+    txHash: string;
+    blockNumber: number;
+    amount: number;
+    sender: string | null;
+    receiver: string | null;
+  }>;
+}
+```
+
+### cardano.transactionConfirmed
+
+```typescript
+{
+  txHash: string;
+  blockHeight: number;
+  confirmations: number;
+}
+```
+
+## Admin Service
+
+OData service with actions:
+
+- `startWatcher()`, `stopWatcher()`
+- `startAddressPolling()`, `stopAddressPolling()`
+- `startTransactionPolling()`, `stopTransactionPolling()`
+- `getWatcherStatus()`
+- `addWatchedAddress(address, description)`
+- `submitAndTrackTransaction(txHash, description)`
+- `manualPoll()`
+
+## Performance
+
+**Recommended Indexes**:
+```sql
+CREATE INDEX idx_watched_address ON WatchedAddress(address);
+CREATE INDEX idx_tx_submission ON TransactionSubmission(txHash);
+CREATE INDEX idx_event_type ON BlockchainEvent(type);
+```
+
+**Polling Optimization**:
+- Separate timers per path (address 30s, TX 60s)
+- Batch processing (default: 50 items)
+- Parallel queries for independent items
+
+## Extensibility
 
 ### Custom Event Handlers
 
-Consumers can register handlers for all event types with full type safety:
+```typescript
+cds.on("cardano.newTransactions", async (data) => {
+  // Process payment
+});
+```
+
+### Custom API Provider
+
+Replace `src/blockfrost.ts` with custom implementation matching interface:
 
 ```typescript
-import type { 
-  NewTransactionsEvent,
-  TxConfirmedEvent,
-  MempoolEvent,
-  ContractEvent 
-} from "@odatano/cardano-watcher";
-
-// Address monitoring
-cds.on("cardano.newTransactions", async (data: NewTransactionsEvent) => {
-  // Process new transactions for watched addresses
-});
-
-// Transaction confirmation
-cds.on("cardano.transactionConfirmed", async (data: TxConfirmedEvent) => {
-  // Handle transaction found in network
-});
-
-// Mempool monitoring
-cds.on("cardano.mempoolMatch", async (data: MempoolEvent) => {
-  // Track matching transactions in mempool
-});
-
-// Smart contract events
-cds.on("cardano.contractEvent", async (data: ContractEvent) => {
-  // Handle script executions
-});
+export async function fetchAddressTransactions(
+  address: string, 
+  fromBlock: number | null
+): Promise<TransactionData[]>
 ```
-
-### Webhook Integration (planned)
-
-```typescript
-config.webhookEndpoint = "https://my-app.com/webhook";
-// Plugin sends POST requests to endpoint
-```
-
-## Performance Considerations
-
-### Database Queries
-
-- Index on `WatchedAddress.address`
-- Index on `TransactionSubmission.txHash`
-- Index on `MempoolWatch.criteria`
-- Index on `BlockchainEvent.txHash`
-- Index on `BlockchainEvent.type`
-- Index on `Transaction.txHash`
-- Batch inserts for transactions and events
-
-### Polling Optimization
-
-- Separate configurable intervals per polling path:
-  - Address Polling: 30s (frequent updates)
-  - Transaction Polling: 60s (less time-critical)
-  - Mempool Polling: 10s (very time-critical, opt-in)
-- Batch processing of watch items (addresses, txs, mempool)
-- Priority-based polling optimizes API usage
-- Rate limiting for API calls
-- Caching of block data and transaction status
-- Parallel querying for independent watch items
-
-### Memory Management
-
-- Limit on number of parallel requests
-- Cleanup of old events via retention policy
-- Streaming for large datasets
-
-## Security
-
-### API Key Management
-
-- Never hardcode in code
-- Use environment variables
-- CAP Service Manager for production
-
-### Database Access
-
-- Use CAP Authorization
-- Read/Write permissions per entity
-- Tenant isolation for multi-tenancy
-
-## Monitoring & Logging
-
-### Log Levels
-
-```typescript
-cds.log("cardanoWatcher").info("Status");
-cds.log("cardanoWatcher/watcher").debug("Details");
-cds.log("cardanoWatcher/blockfrost").error("Error");
-```
-
-### Metrics
-
-- Number of watched items (addresses, txs, mempool watches)
-- Events detected per minute (by type)
-- Transaction confirmations tracked
-- Mempool activity
-- API call rate and response times
-- Error rate by event type
-
-## Testing Strategy
-
-### Unit Tests
-
-- Config validation
-- Transaction parsing
-- Event emission for all event types
-- Mempool detection logic
-- Status change detection
-- Smart contract event parsing
-
-### Integration Tests
-
-- Database operations
-- Service actions
-- Event flow
-
-### E2E Tests (with Mock)
-
-- Complete workflow
-- Error scenarios
-- Recovery behavior
-
-## Deployment
-
-### As npm Package
-
-```bash
-npm publish @odatano/cardano-watcher
-```
-
-### In Consumer Projects
-
-```bash
-npm add @odatano/cardano-watcher
-```
-
-CAP loads the plugin automatically!
-
-## Current Features & Roadmap
-
-### Implemented
-- ✅ **Address Monitoring**: Track address transactions
-- ✅ **Transaction Confirmation Tracking**: Check if submitted TX is in network
-- ✅ **Individual Polling Paths**: Separate intervals for each path
-- ✅ **Mempool Monitoring**: Track pending transactions (placeholder)
-- ✅ **Multiple Event Types**: Different events for different scenarios
-- ✅ **Type-safe Event System**: Full TypeScript support
-- ✅ **Individual Path Control**: Start/stop each path separately
-
-### Planned Enhancements
-- [ ] **Smart Contract Events**: Monitor Plutus script executions in detail
-- [ ] **NFT Tracking**: Detect NFT minting and transfers
-- [ ] **Stake Pool Events**: Monitor delegation changes
-- [ ] **Multi-Tenant**: Support for multiple tenants
-- [ ] **Webhook Support**: Push notifications to external endpoints
-- [ ] **Redis Caching**: For better performance
-- [ ] **GraphQL API**: In addition to OData
-- [ ] **Custom Query Language**: For flexible event filtering
-
-## Similarities to event-queue
-
-This plugin follows the best practices of event-queue:
-
-✅ CDS Plugin Pattern  
-✅ Configuration via `cds.env`  
-✅ Automatic initialization  
-✅ Event-based architecture  
-✅ Admin service for management  
-✅ Extensible design  
-✅ Database-first approach  
-
-## Differences from event-queue
-
-- **Domain**: Blockchain instead of generic event processing
-- **External Integration**: Blockfrost API
-- **Polling**: Active polling instead of push
-- **Use Case**: Specific to Cardano
-
-## Summary
-
-The Cardano Watcher Plugin is a production-ready CAP plugin that:
-
-1. **Easy Integration**: npm install + config
-2. **Automatic Initialization**: Loads via CAP plugin system
-3. **Multi-Event Support**: Addresses, transaction status, mempool, contracts
-4. **Type-Safe Events**: Full TypeScript support for all event types
-5. **Extensible**: Custom providers, event handlers, and watch types
-6. **Scalable**: Optimized polling, caching, and batch processing
-4. Is scalable and extensible
-5. Follows best practices from the CAP ecosystem
