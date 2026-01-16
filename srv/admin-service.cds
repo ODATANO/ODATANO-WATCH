@@ -8,7 +8,6 @@ service CardanoWatcherAdminService {
   // Entities
   entity WatchedAddresses as projection on watch.WatchedAddress;
   entity TransactionSubmissions as projection on watch.TransactionSubmission;
-  entity MempoolWatches as projection on watch.MempoolWatch;
   entity BlockchainEvents as projection on watch.BlockchainEvent;
   entity Transactions as projection on watch.Transaction;
   entity WatcherConfigs as projection on watch.WatcherConfig;
@@ -16,14 +15,30 @@ service CardanoWatcherAdminService {
   // Actions
   action startWatcher() returns String;
   action stopWatcher() returns String;
+  
+  // Individual polling path controls
+  action startAddressPolling() returns String;
+  action startTransactionPolling() returns String;
+  action startMempoolPolling() returns String;
+  action stopAddressPolling() returns String;
+  action stopTransactionPolling() returns String;
+  action stopMempoolPolling() returns String;
+  
   action getWatcherStatus() returns {
     isRunning: Boolean;
+    addressPolling: Boolean;
+    transactionPolling: Boolean;
+    mempoolPolling: Boolean;
     network: String;
-    pollingInterval: Integer;
+    pollingIntervals: {
+      address: Integer;
+      transaction: Integer;
+      mempool: Integer;
+    };
     watchCounts: {
       addresses: Integer;
       submissions: Integer;
-      mempoolWatches: Integer;
+      newtransactions: Integer;
     };
   };
   
@@ -46,15 +61,6 @@ service CardanoWatcherAdminService {
     ID: UUID,
     status: String
   ) returns TransactionSubmissions;
-  
-  // Mempool Monitoring
-  action addMempoolWatch(
-    watchType: String,
-    criteria: String,
-    description: String,
-    network: String,
-    alertThreshold: Integer
-  ) returns MempoolWatches;
   
   // Generic Watch Removal
   action removeWatch(

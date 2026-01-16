@@ -4,12 +4,19 @@ import * as watcher from "../src/watcher";
 
 interface WatcherStatus {
   isRunning: boolean;
+  addressPolling: boolean;
+  transactionPolling: boolean;
+  mempoolPolling: boolean;
   network: string;
-  pollingInterval: number;
+  pollingIntervals: {
+    address: number;
+    transaction: number;
+    mempool: number;
+  };
   watchCounts: {
     addresses: number;
+    newtransactions: number;
     submissions: number;
-    mempoolWatches: number;
   };
 }
 
@@ -20,7 +27,7 @@ export default class CardanoWatcherAdminService {
   async init(): Promise<any> {
     const { WatchedAddresses, TransactionSubmissions, MempoolWatches } = this.entities;
 
-    // Start watcher action
+    // Start watcher action (all paths)
     this.on("startWatcher", async (req: any) => {
       try {
         await watcher.start();
@@ -32,7 +39,7 @@ export default class CardanoWatcherAdminService {
       }
     });
 
-    // Stop watcher action
+    // Stop watcher action (all paths)
     this.on("stopWatcher", async (req: any) => {
       try {
         await watcher.stop();
@@ -40,6 +47,52 @@ export default class CardanoWatcherAdminService {
       } catch (err) {
         const error = err as Error;
         req.error(500, `Failed to stop watcher: ${error.message}`);
+        return undefined;
+      }
+    });
+
+    // Start individual polling paths
+    this.on("startAddressPolling", async (req: any) => {
+      try {
+        await watcher.startAddressPolling();
+        return "Address polling started successfully";
+      } catch (err) {
+        const error = err as Error;
+        req.error(500, `Failed to start address polling: ${error.message}`);
+        return undefined;
+      }
+    });
+
+    this.on("startTransactionPolling", async (req: any) => {
+      try {
+        await watcher.startTransactionPolling();
+        return "Transaction polling started successfully";
+      } catch (err) {
+        const error = err as Error;
+        req.error(500, `Failed to start transaction polling: ${error.message}`);
+        return undefined;
+      }
+    });
+
+    // Stop individual polling paths
+    this.on("stopAddressPolling", async (req: any) => {
+      try {
+        await watcher.stopAddressPolling();
+        return "Address polling stopped successfully";
+      } catch (err) {
+        const error = err as Error;
+        req.error(500, `Failed to stop address polling: ${error.message}`);
+        return undefined;
+      }
+    });
+
+    this.on("stopTransactionPolling", async (req: any) => {
+      try {
+        await watcher.stopTransactionPolling();
+        return "Transaction polling stopped successfully";
+      } catch (err) {
+        const error = err as Error;
+        req.error(500, `Failed to stop transaction polling: ${error.message}`);
         return undefined;
       }
     });
@@ -57,12 +110,19 @@ export default class CardanoWatcherAdminService {
 
       return {
         isRunning: status.isRunning,
+        addressPolling: status.addressPolling,
+        transactionPolling: status.transactionPolling,
+        mempoolPolling: status.mempoolPolling,
         network: status.config.network || "mainnet",
-        pollingInterval: status.config.pollingInterval || 30000,
+        pollingIntervals: {
+          address: status.config.addressPolling?.interval || 30,
+          transaction: status.config.transactionPolling?.interval || 60,
+          mempool: status.config.mempoolPolling?.interval || 10,
+        },
         watchCounts: {
           addresses: addressCount?.length || 0,
           submissions: submissionCount?.length || 0,
-          mempoolWatches: mempoolCount?.length || 0,
+          newtransactions: mempoolCount?.length || 0,
         },
       };
     });
@@ -228,26 +288,5 @@ export default class CardanoWatcherAdminService {
 
       return true;
     });
-
-    // Manual poll
-    this.on("manualPoll", async () => {
-      try {
-        await watcher.pollBlockchain();
-        return {
-          success: true,
-          message: "Manual poll completed successfully",
-          eventsDetected: 0, // TODO: Return actual count
-        };
-      } catch (err) {
-        const error = err as Error;
-        return {
-          success: false,
-          message: `Manual poll failed: ${error.message}`,
-          eventsDetected: 0,
-        };
-      }
-    });
-
-    return this;
-  }
+}
 }

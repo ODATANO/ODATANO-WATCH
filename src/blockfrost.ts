@@ -189,6 +189,37 @@ export async function getAddressInfo(address: string): Promise<AddressInfo | nul
   }
 }
 
+export async function getTransaction(hash: string): Promise<any | null> {
+  if (!blockfrostClient) {
+    return null;
+  }
+  
+  try {
+    const tx = await blockfrostClient.txs(hash);
+    const txUtxos = await blockfrostClient.txsUtxos(hash);
+    
+    // Get latest block to calculate confirmations
+    const latestBlock = await blockfrostClient.blocksLatest();
+    const confirmations = latestBlock.height - tx.block_height;
+    
+    return {
+      hash: tx.hash,
+      blockHeight: tx.block_height,
+      blockHash: tx.block,
+      fees: parseFloat(tx.fees) / 1000000,
+      confirmations,
+      blockTime: tx.block_time,
+      slot: tx.slot,
+      inputs: txUtxos.inputs,
+      outputs: txUtxos.outputs,
+    };
+  } catch (err) {
+    // Transaction might not exist or be in mempool
+    cds.log(COMPONENT_NAME).debug(`Transaction ${hash} not found:`, err);
+    return null;
+  }
+}
+
 /**
  * Verify if Blockfrost is available and configured
  */

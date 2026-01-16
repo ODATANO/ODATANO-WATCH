@@ -6,8 +6,14 @@ import type { TransactionData } from "./blockfrost";
 
 const COMPONENT_NAME = "/cardanoWatcher/watcher";
 
-let watcherInterval: NodeJS.Timeout | null = null;
+let addressInterval: NodeJS.Timeout | null = null;
+let transactionInterval: NodeJS.Timeout | null = null;
+let mempoolInterval: NodeJS.Timeout | null = null;
+
 let isRunning = false;
+let addressPollingActive = false;
+let transactionPollingActive = false;
+let mempoolPollingActive = false;
 
 interface WatchedAddress {
   ID: string;
@@ -41,7 +47,7 @@ export async function setup(): Promise<void> {
 }
 
 /**
- * Start watching the blockchain
+ * Start watching the blockchain (all enabled polling paths)
  */
 export async function start(): Promise<void> {
   if (isRunning) {
@@ -52,29 +58,23 @@ export async function start(): Promise<void> {
   const logger = cds.log(COMPONENT_NAME);
   const cfg = config.get();
 
-  logger.info(`Starting Cardano Watcher on ${cfg.network} network with ${cfg.pollingInterval}s interval`);
+  logger.info(`Starting Cardano Watcher on ${cfg.network} network`);
   
   isRunning = true;
 
-  // Start polling
-  watcherInterval = setInterval(async () => {
-    try {
-      await pollBlockchain();
-    } catch (err) {
-      logger.error("Error polling blockchain:", err);
-    }
-  }, cfg.pollingInterval! * 1000);
-
-  // Run initial poll immediately
-  try {
-    await pollBlockchain();
-  } catch (err) {
-    logger.error("Error in initial blockchain poll:", err);
+  // Start individual polling paths based on config
+  if (cfg.addressPolling?.enabled) {
+    await startAddressPolling();
   }
+  
+  if (cfg.transactionPolling?.enabled) {
+    await startTransactionPolling();
+  }
+  
 }
 
 /**
- * Stop watching the blockchain
+ * Stop watching the blockchain (all polling paths)
  */
 export async function stop(): Promise<void> {
   if (!isRunning) {
@@ -84,44 +84,127 @@ export async function stop(): Promise<void> {
   const logger = cds.log(COMPONENT_NAME);
   logger.info("Stopping Cardano Watcher...");
 
-  if (watcherInterval) {
-    clearInterval(watcherInterval);
-    watcherInterval = null;
-  }
+  await stopAddressPolling();
+  await stopTransactionPolling();
 
   isRunning = false;
   logger.info("Cardano Watcher stopped");
 }
 
+// ============================================================================
+// Address Polling Path
+// ============================================================================
+
 /**
- * Poll the blockchain for new events
- * 
- * Currently implements:
- * - Address monitoring (new transactions)
- * 
- * Planned implementations:
- * - Transaction status tracking (confirmations, status changes)
- * - Mempool monitoring (pending tx detection)
- * - Smart contract events (script executions)
+ * Start address polling
  */
-export async function pollBlockchain(): Promise<void> {
+export async function startAddressPolling(): Promise<void> {
+  if (addressPollingActive) {
+    return;
+  }
+
   const logger = cds.log(COMPONENT_NAME);
+  const cfg = config.get();
+  const interval = cfg.addressPolling?.interval || 30;
 
+  logger.info(`Starting address polling (interval: ${interval}s)`);
+  addressPollingActive = true;
+
+  // Start interval
+  addressInterval = setInterval(async () => {
+    try {
+      await pollWatchedAddresses();
+    } catch (err) {
+      logger.error("Error in address polling:", err);
+    }
+  }, interval * 1000);
+
+  // Run initial poll immediately
   try {
-    // Monitor watched addresses for new transactions
     await pollWatchedAddresses();
-
-    // TODO: Monitor submitted transactions for status changes
-    // await pollTransactionSubmissions();
-
-    // TODO: Monitor mempool for matching transactions
-    // await pollMempoolWatches();
-
   } catch (err) {
-    logger.error("Error in pollBlockchain:", err);
-    throw err;
+    logger.error("Error in initial address poll:", err);
   }
 }
+
+/**
+ * Stop address polling
+ */
+export async function stopAddressPolling(): Promise<void> {
+  if (!addressPollingActive) {
+    return;
+  }
+
+  const logger = cds.log(COMPONENT_NAME);
+  logger.info("Stopping address polling...");
+
+  if (addressInterval) {
+    clearInterval(addressInterval);
+    addressInterval = null;
+  }
+
+  addressPollingActive = false;
+}
+
+// ============================================================================
+// Transaction Polling Path
+// ============================================================================
+
+/**
+ * Start transaction submission polling
+ */
+export async function startTransactionPolling(): Promise<void> {
+  if (transactionPollingActive) {
+    return;
+  }
+
+  const logger = cds.log(COMPONENT_NAME);
+  const cfg = config.get();
+  const interval = cfg.transactionPolling?.interval || 60;
+
+  logger.info(`Starting transaction polling (interval: ${interval}s)`);
+  transactionPollingActive = true;
+
+  // Start interval
+  transactionInterval = setInterval(async () => {
+    try {
+      await pollTransactionSubmissions();
+    } catch (err) {
+      logger.error("Error in transaction polling:", err);
+    }
+  }, interval * 1000);
+
+  // Run initial poll immediately
+  try {
+    await pollTransactionSubmissions();
+  } catch (err) {
+    logger.error("Error in initial transaction poll:", err);
+  }
+}
+
+/**
+ * Stop transaction submission polling
+ */
+export async function stopTransactionPolling(): Promise<void> {
+  if (!transactionPollingActive) {
+    return;
+  }
+
+  const logger = cds.log(COMPONENT_NAME);
+  logger.info("Stopping transaction polling...");
+
+  if (transactionInterval) {
+    clearInterval(transactionInterval);
+    transactionInterval = null;
+  }
+
+  transactionPollingActive = false;
+}
+
+
+// ============================================================================
+// Individual Polling Functions
+// ============================================================================
 
 /**
  * Poll watched addresses for new transactions
@@ -255,11 +338,148 @@ async function fetchAddressTransactions(
 }
 
 /**
+ * Poll submitted transactions to check if they are in the network
+ * This checks if submitted transactions have been picked up by the blockchain,
+ * not their confirmation status.
+ */
+async function pollTransactionSubmissions(): Promise<void> {
+  const logger = cds.log(COMPONENT_NAME);
+
+  try {
+    // Get active transaction submissions
+    const submissions = await cds.tx(async (tx: any) => {
+      return tx.run(
+        SELECT.from("odatano.watch.TransactionSubmission")
+          .where({ active: true })
+      );
+    });
+
+    if (!submissions || submissions.length === 0) {
+      logger.debug("No active transaction submissions found");
+      return;
+    }
+
+    logger.debug(`Checking ${submissions.length} transaction submissions`);
+
+    // Process each submission
+    for (const submission of submissions) {
+      await processTransactionSubmission(submission);
+    }
+
+  } catch (err) {
+    logger.error("Error in pollTransactionSubmissions:", err);
+    throw err;
+  }
+}
+
+/**
+ * Process a single transaction submission
+ * Checks if submitted transaction is in the network (found on-chain)
+ */
+async function processTransactionSubmission(submission: any): Promise<void> {
+  const logger = cds.log(COMPONENT_NAME);
+  const cfg = config.get();
+
+  try {
+    logger.debug(`Checking if transaction ${submission.txHash} is in network`);
+
+    const txInfo = await blockfrost.getTransaction(submission.txHash);
+
+    if (!txInfo) {
+      // Transaction not found in network yet - still pending
+      logger.debug(`Transaction ${submission.txHash} still pending (not in network)`);
+      
+      // Update lastChecked timestamp
+      await cds.tx(async (tx: any) => {
+        await tx.run(
+          UPDATE.entity("odatano.watch.TransactionSubmission")
+            .set({ 
+              lastChecked: new Date().toISOString(),
+              currentStatus: "PENDING"
+            })
+            .where({ ID: submission.ID })
+        );
+      });
+      return;
+    }
+
+    // Transaction found in network!
+    const wasPending = submission.currentStatus === "PENDING" || !submission.currentStatus;
+
+    if (wasPending) {
+      logger.info(`Transaction ${submission.txHash} confirmed in network!`);
+
+      await cds.tx(async (tx: any) => {
+        // Update submission status to CONFIRMED
+        await tx.run(
+          UPDATE.entity("odatano.watch.TransactionSubmission")
+            .set({
+              currentStatus: "CONFIRMED",
+              lastChecked: new Date().toISOString(),
+              confirmations: (txInfo as any).confirmations || 0,
+            })
+            .where({ ID: submission.ID })
+        );
+
+        // Create blockchain event
+        await tx.run(
+          INSERT.into("odatano.watch.BlockchainEvent").entries({
+            type: "TX_CONFIRMED",
+            txHash: submission.txHash,
+            submission_ID: submission.ID,
+            blockNumber: (txInfo as any).blockHeight,
+            blockHash: (txInfo as any).blockHash,
+            payload: JSON.stringify({
+              foundAt: new Date().toISOString(),
+              blockHeight: (txInfo as any).blockHeight,
+              confirmations: (txInfo as any).confirmations || 0,
+            }),
+            network: cfg.network,
+            processed: false,
+          })
+        );
+      });
+
+      // Emit event - transaction confirmed in network
+      await (cds as any).emit("cardano.transactionConfirmed", {
+        txHash: submission.txHash,
+        blockHeight: (txInfo as any).blockHeight,
+        confirmations: (txInfo as any).confirmations || 0,
+      });
+    } else {
+      // Already in network, just update lastChecked and confirmations
+      await cds.tx(async (tx: any) => {
+        await tx.run(
+          UPDATE.entity("odatano.watch.TransactionSubmission")
+            .set({ 
+              lastChecked: new Date().toISOString(),
+              confirmations: (txInfo as any).confirmations || 0,
+            })
+            .where({ ID: submission.ID })
+        );
+      });
+    }
+
+  } catch (err) {
+    logger.error(`Error processing transaction ${submission.txHash}:`, err);
+  }
+}
+
+/**
  * Get current watcher status
  */
-export function getStatus(): { isRunning: boolean; config: any } {
+export function getStatus(): { 
+  isRunning: boolean; 
+  addressPolling: boolean;
+  transactionPolling: boolean;
+  mempoolPolling: boolean;
+  config: any;
+} {
   return {
     isRunning,
+    addressPolling: addressPollingActive,
+    transactionPolling: transactionPollingActive,
+    mempoolPolling: mempoolPollingActive,
     config: config.get(),
   };
 }

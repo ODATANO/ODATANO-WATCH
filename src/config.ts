@@ -1,8 +1,12 @@
 import cds from "@sap/cds";
 
+export interface PollingConfig {
+  enabled: boolean;
+  interval: number; // in seconds
+}
+
 export interface CardanoWatcherConfig {
-  network?: "mainnet" | "testnet" | "preview" | "preprod";
-  pollingInterval?: number;
+  network?: "mainnet" | "preview" | "preprod";
   blockfrostApiKey?: string;
   blockfrostProjectId?: string;
   autoStart?: boolean;
@@ -11,11 +15,14 @@ export interface CardanoWatcherConfig {
   batchSize?: number;
   enableWebhooks?: boolean;
   webhookEndpoint?: string;
+  
+  // Individual polling configurations
+  addressPolling?: PollingConfig;        // Monitor watched addresses for new transactions
+  transactionPolling?: PollingConfig;    // Check if submitted transactions are in the network
 }
 
-let configuration: CardanoWatcherConfig = {
+ let configuration: CardanoWatcherConfig = {
   network: "mainnet",
-  pollingInterval: 30,
   blockfrostApiKey: undefined,
   blockfrostProjectId: undefined,
   autoStart: true,
@@ -24,17 +31,26 @@ let configuration: CardanoWatcherConfig = {
   batchSize: 100,
   enableWebhooks: false,
   webhookEndpoint: undefined,
+  
+  // Individual polling configs with sensible defaults
+  addressPolling: {
+    enabled: true,
+    interval: 30, // Check watched addresses every 30s
+  },
+  transactionPolling: {
+    enabled: true,
+    interval: 60, // Check submitted transactions every 60s
+  },
 };
 
 /**
  * Initialize configuration with options
+ * @param options Configuration options
+ * @returns void 
  */
 export function initialize(options: CardanoWatcherConfig = {}): void {
-  const envConfig = (cds.env.cardanoWatcher as CardanoWatcherConfig) || {};
-  
   configuration = {
     ...configuration,
-    ...envConfig,
     ...options,
   };
 
@@ -45,19 +61,15 @@ export function initialize(options: CardanoWatcherConfig = {}): void {
  * Validate configuration
  */
 function validateConfiguration(): void {
-  const validNetworks = ["mainnet", "testnet", "preview", "preprod"];
+  const validNetworks = ["mainnet", "preview", "preprod"];
   
   if (!validNetworks.includes(configuration.network!)) {
     throw new Error(`Invalid network: ${configuration.network}. Must be one of: ${validNetworks.join(", ")}`);
   }
 
-  if (configuration.pollingInterval! < 5) {
-    throw new Error("Polling interval must be at least 5 seconds");
-  }
-
   if (!configuration.blockfrostApiKey && !configuration.blockfrostProjectId) {
     cds.log("/cardanoWatcher/config").warn(
-      "No Blockfrost API key configured. Set BLOCKFROST_API_KEY or configure via cds.env.cardanoWatcher"
+      "No Blockfrost API key configured. Configure via cds.env.cardanoWatcher"
     );
   }
 }

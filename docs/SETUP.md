@@ -49,6 +49,36 @@ npm link
 npm link @odatano/cardano-watcher
 ```
 
+## Configuration Options
+
+The plugin supports individual polling paths with separate intervals:
+
+```json
+{
+  "cds": {
+    "cardanoWatcher": {
+      "network": "mainnet",
+      "blockfrostProjectId": "your-project-id",
+      "autoStart": true,
+      
+      "addressPolling": {
+        "enabled": true,
+        "interval": 30
+      },
+      "transactionPolling": {
+        "enabled": true,
+        "interval": 60
+      },
+    }
+  }
+}
+```
+
+### Polling Intervals
+
+- **addressPolling**: Monitor watched addresses (default: 30s)
+- **transactionPolling**: Check if submitted TXs are in network (default: 60s)
+
 ## TypeScript Notes
 
 The project uses TypeScript with the following configuration:

@@ -128,8 +128,21 @@ initialize() → config.initialize() → watcher.setup() → ready
 ```typescript
 interface CardanoWatcherConfig {
   network?: "mainnet" | "testnet" | "preview" | "preprod";
-  pollingInterval?: number;
   blockfrostApiKey?: string;
+  autoStart?: boolean;
+  
+  addressPolling?: {
+    enabled: boolean;
+    interval: number;
+  };
+  transactionPolling?: {
+    enabled: boolean;
+    interval: number;
+  };
+  mempoolPolling?: {
+    enabled: boolean;
+    interval: number;
+  };
   // ...
 }
 ```
@@ -153,17 +166,20 @@ cds.env.cardanoWatcher (package.json)
   - **Custom Events**: Extensible for smart contracts, NFTs, stake pool changes, etc.
 
 - **How it works**:
-  1. Polling interval starts timer
+  1. Separate polling intervals for each path (address/transaction/mempool)
   2. Fetches active watched items from DB (addresses, submitted txs, etc.)
   3. For each item: Query blockchain for status/updates
   4. Stores events and changes in DB
-  5. Emits corresponding events (e.g., `cardano.newTransactions`, `cardano.txStatusChanged`, `cardano.mempoolEvent`)
+  5. Emits corresponding events (e.g., `cardano.newTransactions`, `cardano.transactionConfirmed`, `cardano.mempoolMatch`)
 
 **Polling cycle**:
 ```
-Timer (Interval)
+Three Independent Timers:
+  - Address Polling (default: 30s)
+  - Transaction Polling (default: 60s)
+  - Mempool Polling (default: 10s, disabled by default)
     ↓
-pollBlockchain()
+pollWatchedAddresses() / pollTransactionSubmissions() / pollMempoolWatches()
     ↓
 Fetch Watched Items (addresses, txs, etc.)
     ↓
@@ -231,8 +247,8 @@ Consumer Services handle event
 Consumer Service
     ↓
 cds.on("cardano.newTransactions", handler)        // Address activity
-cds.on("cardano.txStatusChanged", handler)        // TX status updates  
-cds.on("cardano.mempoolEvent", handler)           // Mempool changes
+cds.on("cardano.transactionConfirmed", handler)   // TX confirmed in network  
+cds.on("cardano.mempoolMatch", handler)           // Mempool matches
 cds.on("cardano.contractEvent", handler)          // Smart contract events
     ↓
 Receive event data with type-specific payload
@@ -256,9 +272,15 @@ OData/REST Service for administration:
 - `Transactions` - Read access to transaction details
 
 **Actions**:
-- `startWatcher()` - Start watcher
-- `stopWatcher()` - Stop watcher
-- `getWatcherStatus()` - Get status
+- `startWatcher()` - Start all enabled paths
+- `stopWatcher()` - Stop all paths
+- `startAddressPolling()` - Start address polling
+- `startTransactionPolling()` - Start transaction polling
+- `startMempoolPolling()` - Start mempool polling
+- `stopAddressPolling()` - Stop address polling
+- `stopTransactionPolling()` - Stop transaction polling
+- `stopMempoolPolling()` - Stop mempool polling
+- `getWatcherStatus()` - Get status with individual path states
 - `addWatchedAddress()` - Add address to monitor
 - `submitAndTrackTransaction()` - Submit transaction and track its status
 - `addMempoolWatch()` - Monitor mempool for specific criteria
@@ -303,7 +325,7 @@ Consumers can register handlers for all event types with full type safety:
 ```typescript
 import type { 
   NewTransactionsEvent,
-  TxStatusChangedEvent,
+  TxConfirmedEvent,
   MempoolEvent,
   ContractEvent 
 } from "@odatano/cardano-watcher";
@@ -313,14 +335,14 @@ cds.on("cardano.newTransactions", async (data: NewTransactionsEvent) => {
   // Process new transactions for watched addresses
 });
 
-// Transaction status tracking
-cds.on("cardano.txStatusChanged", async (data: TxStatusChangedEvent) => {
-  // Handle confirmation, failure, or status updates
+// Transaction confirmation
+cds.on("cardano.transactionConfirmed", async (data: TxConfirmedEvent) => {
+  // Handle transaction found in network
 });
 
 // Mempool monitoring
-cds.on("cardano.mempoolEvent", async (data: MempoolEvent) => {
-  // Track pending transactions
+cds.on("cardano.mempoolMatch", async (data: MempoolEvent) => {
+  // Track matching transactions in mempool
 });
 
 // Smart contract events
@@ -350,9 +372,12 @@ config.webhookEndpoint = "https://my-app.com/webhook";
 
 ### Polling Optimization
 
-- Configurable `pollingInterval`
+- Separate configurable intervals per polling path:
+  - Address Polling: 30s (frequent updates)
+  - Transaction Polling: 60s (less time-critical)
+  - Mempool Polling: 10s (very time-critical, opt-in)
 - Batch processing of watch items (addresses, txs, mempool)
-- Priority-based polling (mempool more frequent than confirmed txs)
+- Priority-based polling optimizes API usage
 - Rate limiting for API calls
 - Caching of block data and transaction status
 - Parallel querying for independent watch items
@@ -439,10 +464,12 @@ CAP loads the plugin automatically!
 
 ### Implemented
 - ✅ **Address Monitoring**: Track address transactions
-- ✅ **Transaction Status Tracking**: Monitor submitted transaction confirmations
-- ✅ **Mempool Monitoring**: Track pending transactions
+- ✅ **Transaction Confirmation Tracking**: Check if submitted TX is in network
+- ✅ **Individual Polling Paths**: Separate intervals for each path
+- ✅ **Mempool Monitoring**: Track pending transactions (placeholder)
 - ✅ **Multiple Event Types**: Different events for different scenarios
 - ✅ **Type-safe Event System**: Full TypeScript support
+- ✅ **Individual Path Control**: Start/stop each path separately
 
 ### Planned Enhancements
 - [ ] **Smart Contract Events**: Monitor Plutus script executions in detail

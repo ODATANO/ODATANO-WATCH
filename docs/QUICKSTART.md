@@ -4,7 +4,7 @@
 
 - Node.js >= 18
 - SAP CAP SDK (`@sap/cds`)
-- Blockfrost API Key (optional, but recommended)
+- Blockfrost API Key
 
 ## Step 1: Install Plugin
 
@@ -22,10 +22,18 @@ Add to your project's `package.json`:
 {
   "cds": {
     "cardanoWatcher": {
-      "network": "testnet",
-      "pollingInterval": 60000,
+      "network": "preview",
       "autoStart": true,
-      "blockfrostApiKey": "your-api-key-here"
+      "blockfrostApiKey": "your-api-key-here",
+      
+      "addressPolling": {
+        "enabled": true,
+        "interval": 30
+      },
+      "transactionPolling": {
+        "enabled": true,
+        "interval": 60
+      }
     }
   }
 }
@@ -45,7 +53,7 @@ curl -X POST http://localhost:4004/cardano-watcher-admin/addWatchedAddress \
   -d '{
     "address": "addr_test1...",
     "description": "My Test Wallet",
-    "network": "testnet"
+    "network": "preview"
   }'
 ```
 
@@ -59,26 +67,9 @@ curl -X POST http://localhost:4004/cardano-watcher-admin/submitAndTrackTransacti
   -d '{
     "txHash": "abc123...",
     "description": "Payment to supplier",
-    "network": "mainnet"
+    "network": "preview"
   }'
 ```
-
-### Option C: Monitor Mempool
-
-Watch for pending transactions matching specific criteria.
-
-```bash
-curl -X POST http://localhost:4004/cardano-watcher-admin/addMempoolWatch \
-  -H "Content-Type: application/json" \
-  -d '{
-    "watchType": "VALUE_THRESHOLD",
-    "criteria": "{\"minAmount\": 1000000}",
-    "description": "Large transactions",
-    "network": "mainnet",
-    "alertThreshold": 1
-  }'
-```
-
 ## Step 4: React to Events
 
 The plugin emits different events for different activities. Choose what you need:
@@ -111,25 +102,22 @@ module.exports = class PaymentService extends cds.ApplicationService {
 ### Transaction Status Events
 
 ```javascript
-cds.on("cardano.txStatusChanged", async (data) => {
-  console.log(`TX ${data.txHash}`);
-  console.log(`Status: ${data.oldStatus} → ${data.newStatus}`);
+cds.on("cardano.transactionConfirmed", async (data) => {
+  console.log(`TX ${data.txHash} confirmed!`);
+  console.log(`Block: ${data.blockHeight}`);
   console.log(`Confirmations: ${data.confirmations}`);
   
-  if (data.newStatus === "CONFIRMED") {
-    await markOrderAsCompleted(data.txHash);
-  }
+  await markOrderAsCompleted(data.txHash);
 });
 ```
 
 ### Mempool Events
 
 ```javascript
-cds.on("cardano.mempoolEvent", async (data) => {
-  if (data.eventType === "ENTERED") {
-    console.log(`Pending TX: ${data.txHash}`);
-    await notifyUser("Large transaction detected in mempool");
-  }
+cds.on("cardano.mempoolMatch", async (data) => {
+  console.log(`${data.count} mempool matches`);
+  console.log(`Watch: ${data.watchType}`);
+  await notifyUser("Large transaction detected in mempool");
 });
 ```
 
@@ -150,8 +138,13 @@ curl http://localhost:4004/cardano-watcher-admin/getWatcherStatus
 
 ### Start/stop watcher manually
 ```bash
+# All paths
 curl -X POST http://localhost:4004/cardano-watcher-admin/startWatcher
 curl -X POST http://localhost:4004/cardano-watcher-admin/stopWatcher
+
+# Individual paths
+curl -X POST http://localhost:4004/cardano-watcher-admin/startAddressPolling
+curl -X POST http://localhost:4004/cardano-watcher-admin/stopTransactionPolling
 ```
 
 ### Trigger manual poll
@@ -182,11 +175,7 @@ const txs = await SELECT.from("odatano.cardano.Transaction")
 2. Register for free
 3. Create a new project (e.g., "Testnet")
 4. Copy the API Key
-5. Set it in configuration or as environment variable:
-
-```bash
-export BLOCKFROST_API_KEY=your-api-key
-```
+5. Set it in configuration as `blockfrostApiKey`
 
 ## Troubleshooting
 

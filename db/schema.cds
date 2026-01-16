@@ -10,53 +10,40 @@ entity WatchedAddress : cuid, managed {
   description      : String(500);
   active           : Boolean default true;
   lastCheckedBlock : Integer64;
-  network          : String(20) default 'mainnet'; // mainnet, preview, preprod
+  network          : String(20) default 'preview'; // mainnet, preview, preprod
 }
 
 /**
- * Stores submitted transactions to track their status
+ * Stores submitted transactions to check if they are in the network
  */
 entity TransactionSubmission : cuid, managed {
   txHash           : String(100) not null;
   description      : String(500);
   active           : Boolean default true;
-  currentStatus    : String(20); // PENDING, CONFIRMED, FAILED
+  currentStatus    : String(20); // PENDING, CONFIRMED
   lastChecked      : Timestamp;
   confirmations    : Integer;
-  network          : String(20);
+  network          : String(20) default 'preview'; // mainnet, preview, preprod
   submittedBy      : String(100); // User/Service that submitted
   metadata         : LargeString; // Additional tracking info
-}
-
-/**
- * Stores mempool watch configurations
- */
-entity MempoolWatch : cuid, managed {
-  watchType        : String(50) not null; // ADDRESS, ASSET, VALUE_THRESHOLD, etc.
-  criteria         : LargeString not null; // JSON with watch criteria
-  description      : String(500);
-  active           : Boolean default true;
-  lastChecked      : Timestamp;
-  network          : String(20);
-  alertThreshold   : Integer; // How many matching txs before alert
 }
 
 /**
  * Stores detected blockchain events
  */
 entity BlockchainEvent : cuid, managed {
-  type             : String(50) not null;  // TRANSACTION, TX_STATUS_CHANGE, MEMPOOL, CONTRACT, ASSET_TRANSFER, etc.
+  type             : String(50) not null;  // TX_CONFIRMED, ADDRESS_ACTIVITY, etc.
+  description      : String(500);
   blockNumber      : Integer64;
   blockHash        : String(100);
   txHash           : String(100);
   address          : Association to WatchedAddress;
   submission       : Association to TransactionSubmission;
-  mempoolWatch     : Association to MempoolWatch;
   payload          : LargeString;
   processed        : Boolean default false;
   processedAt      : Timestamp;
   error            : LargeString;
-  network          : String(20);
+  network          : String(20) default 'preview'; // mainnet, preview, preprod
 }
 
 /**
@@ -73,7 +60,7 @@ entity Transaction : cuid, managed {
   metadata         : LargeString;
   assets           : LargeString; // JSON array of native assets
   status           : String(20);  // CONFIRMED, PENDING, FAILED
-  network          : String(20);
+  network          : String(20) default 'preview'; // mainnet, preview, preprod
   inMempool        : Boolean default false;
   mempoolEnteredAt : Timestamp;
   confirmedAt      : Timestamp;

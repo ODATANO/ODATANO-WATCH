@@ -1,8 +1,8 @@
-# Cardano Watcher Plugin
+# ODATANO-WATCH a CAP Based Cardano Watcher Plugin
 
 A CAP (Cloud Application Programming Model) plugin for monitoring the Cardano blockchain. Build as plugin, this project can be integrated into other CAP projects to use its functionality like watch address changes and transactions submissions.
 
-📚 **Documentation**: [Quick Start](docs/QUICKSTART.md) | [Setup](docs/SETUP.md) | [Architecture](docs/ARCHITECTURE.md) | [Types](docs/TYPES.md)
+📚 **Documentation**: [Quick Start](docs/QUICKSTART.md) | [Setup](docs/SETUP.md) | [Architecture](docs/ARCHITECTURE.md) |
 
 ## Features
 
@@ -26,16 +26,28 @@ npm add @odatano/cardano-watcher
 
 ### 1. Configure the Plugin
 
-Extend the `package.json` of your CAP project:
+Add the following to your CAP project's `package.json`:
 
 ```json
 {
   "cds": {
     "cardanoWatcher": {
-      "network": "testnet",
-      "pollingInterval": 60000,
+      "network": "preview",
+      "blockfrostApiKey": "...",
       "autoStart": true,
-      "blockfrostApiKey": "your-blockfrost-api-key"
+      
+      "addressPolling": {
+        "enabled": true,
+        "interval": 30
+      },
+      "transactionPolling": {
+        "enabled": true,
+        "interval": 60
+      },
+      "mempoolPolling": {
+        "enabled": false,
+        "interval": 10
+      }
     }
   }
 }
@@ -48,7 +60,7 @@ The plugin is automatically loaded as a CDS plugin. No manual initialization req
 ```typescript
 import type { 
   NewTransactionsEvent,
-  TxStatusChangedEvent,
+  TxConfirmedEvent,
   MempoolEvent 
 } from "@odatano/cardano-watcher";
 
@@ -57,35 +69,17 @@ cds.on("cardano.newTransactions", async (data: NewTransactionsEvent) => {
   console.log(`${data.count} new transactions for ${data.address}`);
 });
 
-// Transaction status tracking
-cds.on("cardano.txStatusChanged", async (data: TxStatusChangedEvent) => {
-  console.log(`TX ${data.txHash}: ${data.oldStatus} → ${data.newStatus}`);
+// Transaction confirmation tracking
+cds.on("cardano.transactionConfirmed", async (data: TxConfirmedEvent) => {
+  console.log(`TX ${data.txHash} confirmed in block ${data.blockHeight}`);
 });
 
 // Mempool monitoring  
-cds.on("cardano.mempoolEvent", async (data: MempoolEvent) => {
-  console.log(`Mempool: ${data.eventType} - ${data.txHash}`);
+cds.on("cardano.mempoolMatch", async (data: MempoolEvent) => {
+  console.log(`Mempool match: ${data.count} transactions`);
 });
 ```
 
-## Configuration
-
-### Via package.json
-
-```json
-{
-  "cds": {
-    "cardanoWatcher": {
-      "network": "preview",           // Cardano network
-      "pollingInterval": 30000,       // Polling interval in milliseconds
-      "blockfrostApiKey": "...",      // Blockfrost API Key
-      "autoStart": true,              // Auto-start on initialization
-      "maxRetries": 3,                // Max retry attempts
-      "batchSize": 100                // Batch size
-    }
-  }
-}
-```
 ## API Usage
 
 ### Admin Service
@@ -108,6 +102,12 @@ GET /cardano-watcher-admin/Transactions
 # Watcher Control
 POST /cardano-watcher-admin/startWatcher
 POST /cardano-watcher-admin/stopWatcher
+POST /cardano-watcher-admin/startAddressPolling
+POST /cardano-watcher-admin/startTransactionPolling
+POST /cardano-watcher-admin/startMempoolPolling
+POST /cardano-watcher-admin/stopAddressPolling
+POST /cardano-watcher-admin/stopTransactionPolling
+POST /cardano-watcher-admin/stopMempoolPolling
 GET  /cardano-watcher-admin/getWatcherStatus
 
 # Address Monitoring
@@ -149,11 +149,17 @@ POST /cardano-watcher-admin/removeWatch
 ```typescript
 import cardanoWatcher from "@odatano/cardano-watcher";
 
-// Start/stop watcher
+// Start/stop all paths
 await cardanoWatcher.start();
 await cardanoWatcher.stop();
 
+// Control individual paths
+await cardanoWatcher.startAddressPolling();
+await cardanoWatcher.startTransactionPolling();
+await cardanoWatcher.stopMempoolPolling();
+
 // Get status
+const status = cardanoWatcher.getStatus();
 const config = cardanoWatcher.config();
 ```
 
@@ -177,19 +183,17 @@ cds.on("cardano.newTransactions", async (event: NewTransactionsEvent) => {
 });
 ```
 
-#### Transaction Status Changes
+#### Transaction Confirmation
 
 ```typescript
-import type { TxStatusChangedEvent } from "@odatano/cardano-watcher";
+import type { TxConfirmedEvent } from "@odatano/cardano-watcher";
 
-cds.on("cardano.txStatusChanged", async (event: TxStatusChangedEvent) => {
-  console.log(`TX ${event.txHash}`);
-  console.log(`Status: ${event.oldStatus} → ${event.newStatus}`);
+cds.on("cardano.transactionConfirmed", async (event: TxConfirmedEvent) => {
+  console.log(`TX ${event.txHash} confirmed!`);
+  console.log(`Block: ${event.blockHeight}`);
   console.log(`Confirmations: ${event.confirmations}`);
   
-  if (event.newStatus === "CONFIRMED") {
-    await markOrderAsCompleted(event.txHash);
-  }
+  await markOrderAsCompleted(event.txHash);
 });
 ```
 
@@ -198,11 +202,10 @@ cds.on("cardano.txStatusChanged", async (event: TxStatusChangedEvent) => {
 ```typescript
 import type { MempoolEvent } from "@odatano/cardano-watcher";
 
-cds.on("cardano.mempoolEvent", async (event: MempoolEvent) => {
-  if (event.eventType === "ENTERED") {
-    console.log(`Pending TX detected: ${event.txHash}`);
-    await notifyUser("Transaction pending...");
-  }
+cds.on("cardano.mempoolMatch", async (event: MempoolEvent) => {
+  console.log(`${event.count} mempool matches for ${event.watchType}`);
+  console.log(`Transactions: ${event.transactions.join(', ')}`);
+  await notifyUser("Large transaction detected in mempool");
 });
 ```
 
@@ -231,7 +234,7 @@ entity TransactionSubmission {
   txHash: String(100);
   description: String(500);
   active: Boolean;
-  currentStatus: String(20); // PENDING, CONFIRMED, FAILED
+  currentStatus: String(20); // PENDING, CONFIRMED
   confirmations: Integer;
   network: String(20);
 }
@@ -255,7 +258,7 @@ Stores all detected blockchain events.
 ```cds
 entity BlockchainEvent {
   key ID: UUID;
-  type: String(50); // TRANSACTION, TX_STATUS_CHANGE, MEMPOOL, etc.
+  type: String(50); // TRANSACTION, TX_CONFIRMED, MEMPOOL, etc.
   blockNumber: Integer64;
   txHash: String(100);
   payload: LargeString;

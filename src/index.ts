@@ -45,17 +45,46 @@ export async function initialize(): Promise<void> {
 }
 
 /**
- * Start the watcher
+ * Start the watcher (all enabled paths)
  */
 export async function start(): Promise<void> {
   return watcher.start();
 }
 
 /**
- * Stop the watcher
+ * Stop the watcher (all paths)
  */
 export async function stop(): Promise<void> {
   return watcher.stop();
+}
+
+/**
+ * Start individual polling paths
+ */
+export async function startAddressPolling(): Promise<void> {
+  return watcher.startAddressPolling();
+}
+
+export async function startTransactionPolling(): Promise<void> {
+  return watcher.startTransactionPolling();
+}
+
+/**
+ * Stop individual polling paths
+ */
+export async function stopAddressPolling(): Promise<void> {
+  return watcher.stopAddressPolling();
+}
+
+export async function stopTransactionPolling(): Promise<void> {
+  return watcher.stopTransactionPolling();
+}
+
+/**
+ * Get watcher status
+ */
+export function getStatus() {
+  return watcher.getStatus();
 }
 
 /**
@@ -67,7 +96,7 @@ export function getConfig(): CardanoWatcherConfig {
 
 // Export types
 export type { CardanoWatcherConfig } from "./config";
-export type { TransactionData, BlockInfo, AddressInfo } from "./blockfrost";
+export type { TransactionData, AddressInfo } from "./blockfrost";
 
 // Event payload types
 export interface NewTransactionsEvent {
@@ -76,19 +105,10 @@ export interface NewTransactionsEvent {
   transactions: string[];
 }
 
-export interface TxStatusChangedEvent {
+export interface TxConfirmedEvent {
   txHash: string;
-  oldStatus: string;
-  newStatus: string;
+  blockHeight: number;
   confirmations: number;
-  blockNumber?: number;
-}
-
-export interface MempoolEvent {
-  eventType: "ENTERED" | "LEFT" | "UPDATED";
-  txHash: string;
-  watchType: string;
-  matchedCriteria: any;
 }
 
 export interface ContractEvent {
@@ -105,5 +125,10 @@ export default {
   initialize,
   start,
   stop,
+  startAddressPolling,
+  startTransactionPolling,
+  stopAddressPolling,
+  stopTransactionPolling,
+  getStatus,
   config: getConfig,
 };
