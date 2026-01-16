@@ -1,0 +1,72 @@
+{
+  "name": "@odatano/cardano-watcher",
+  "version": "0.1.0",
+  "description": "CAP Plugin for watching Cardano blockchain events and transactions",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "prepare": "npm run build",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"**/*.{ts,json,md,cds}\""
+  },
+  "keywords": [
+    "CAP",
+    "cds",
+    "plugin",
+    "cardano",
+    "blockchain",
+    "watcher",
+    "events"
+  ],
+  "author": "",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/cardano-watcher"
+  },
+  "cds": {
+    "requires": {
+      "db": {
+        "kind": "sql"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "db",
+    "srv",
+    "cds-plugin.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "sqlite3": "^5.1.7"
+  },
+  "optionalDependencies": {
+    "@blockfrost/blockfrost-js": "^5.4.0"
+  },
+  "devDependencies": {
+    "@cap-js/cds-types": "^0.6.0",
+    "@sap/cds": "^8.5.0",
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.0.0",
+    "ts-jest": "^29.1.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.3.0"
+  },
+  "peerDependencies": {
+    "@sap/cds": ">=7.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
