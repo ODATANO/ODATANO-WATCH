@@ -1,0 +1,63 @@
+# Development files
+src/
+test/
+coverage/
+*.test.ts
+*.spec.ts
+
+# Config files
+.env
+.env.example
+.env.*
+tsconfig.json
+jest.config.js
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.log
+*.tsbuildinfo
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Documentation (keep only in README)
+docs/
+
+# Scripts
+scripts/
+
+# Database files
+*.db
+*.sqlite
+
+# Generated files (keep dist/ but exclude source maps in production if desired)
+# dist/**/*.map
+
+# Lock files (users should use their own)
+# package-lock.json
+# yarn.lock
+
+# Example/Demo files
+example/
+demo/
+
+# Temporary files
+tmp/
+temp/

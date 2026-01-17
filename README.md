@@ -1,5 +1,10 @@
 # ODATANO-WATCH - CAP-based Cardano Blockchain Monitoring Plugin
 
+[![npm version](https://badge.fury.io/js/@odatano%2Fwatch.svg)](https://www.npmjs.com/package/@odatano/watch)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
+[![CAP](https://img.shields.io/badge/SAP%20CAP-9.0%2B-orange)](https://cap.cloud.sap/)
+
 A CAP (Cloud Application Programming Model) plugin for monitoring the Cardano blockchain. Built as a fully integrated plugin, it can be seamlessly integrated into existing CAP projects to provide blockchain functionalities such as address monitoring, transaction tracking, and event management.
 
 📚 **Documentation**: [Quick Start](docs/QUICKSTART.md) | [Setup Guide](docs/SETUP.md) | [Architecture](docs/ARCHITECTURE.md)
@@ -20,7 +25,7 @@ A CAP (Cloud Application Programming Model) plugin for monitoring the Cardano bl
 ## Installation
 
 ```bash
-npm add @odatano/cardano-watcher
+npm add @odatano/watch
 ```
 
 ## Quick Start
@@ -62,7 +67,7 @@ The plugin is automatically loaded as a CDS plugin. No manual initialization req
 import type { 
   NewTransactionsEvent,
   TxConfirmedEvent
-} from "@odatano/cardano-watcher";
+} from "@odatano/watch";
 
 // Address Monitoring: React to new transactions
 cds.on("cardano.newTransactions", async (data: NewTransactionsEvent) => {
@@ -156,7 +161,7 @@ Content-Type: application/json
 ## Programmatic Usage
 
 ```typescript
-import cardanoWatcher from "@odatano/cardano-watcher";
+import cardanoWatcher from "@odatano/watch";
 
 // Start/stop all polling paths
 await cardanoWatcher.start();
@@ -180,7 +185,7 @@ const config = cardanoWatcher.config();
 Emitted when new transactions are detected for a watched address.
 
 ```typescript
-import type { NewTransactionsEvent } from "@odatano/cardano-watcher";
+import type { NewTransactionsEvent } from "@odatano/watch";
 
 cds.on("cardano.newTransactions", async (event: NewTransactionsEvent) => {
   console.log(`Address: ${event.address}`);
@@ -199,7 +204,7 @@ cds.on("cardano.newTransactions", async (event: NewTransactionsEvent) => {
 Emitted when a submitted transaction is confirmed in the blockchain.
 
 ```typescript
-import type { TxConfirmedEvent } from "@odatano/cardano-watcher";
+import type { TxConfirmedEvent } from "@odatano/watch";
 
 cds.on("cardano.transactionConfirmed", async (event: TxConfirmedEvent) => {
   console.log(`TX ${event.txHash} confirmed!`);

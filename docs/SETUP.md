@@ -7,7 +7,7 @@ Installation, configuration, and deployment for the Cardano Watcher Plugin.
 ### For Plugin Users
 
 ```bash
-npm add @odatano/cardano-watcher
+npm add @odatano/watch
 ```
 
 ### For Plugin Developers
@@ -106,7 +106,7 @@ env:
 Restrict admin service:
 
 ```cds
-using { CardanoWatcherAdminService } from '@odatano/cardano-watcher';
+using { CardanoWatcherAdminService } from '@odatano/watch';
 extend service CardanoWatcherAdminService with @(requires: 'admin');
 ```
 
@@ -164,7 +164,7 @@ cf bind-service my-app cardano-config
 
 ```bash
 # Check installation
-npm ls @odatano/cardano-watcher
+npm ls @odatano/watch
 
 # Verify config
 cds env get cardanoWatcher

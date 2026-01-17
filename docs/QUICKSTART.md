@@ -5,7 +5,7 @@ Get up and running in 5 minutes.
 ## Install
 
 ```bash
-npm add @odatano/cardano-watcher
+npm add @odatano/watch
 ```
 
 **Important**: Use `npm add` (not `npm install`) for CAP plugins!
@@ -75,7 +75,7 @@ POST http://localhost:4004/odata/v4/cardano-watcher-admin/addWatchedAddress
 ## Track Transaction
 
 ```typescript
-import cardanoWatcher from "@odatano/cardano-watcher";
+import cardanoWatcher from "@odatano/watch";
 
 const txHash = await submitToBlockchain(tx);
 await cardanoWatcher.submitAndTrackTransaction({ txHash });
