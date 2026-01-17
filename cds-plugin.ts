@@ -9,11 +9,10 @@ const isBuild = (cds as any).build?.register;
 // Only run during serve, not during build/compile
 if (isBuild && !isServe) {
   module.exports = {};
-} else if (Object.keys(cds.env.cardanoWatcher ?? {}).length) {
+} else {
+  // Always initialize the plugin
   module.exports = cardanoWatcher.initialize().catch((err: Error) => {
     cds.log(COMPONENT_NAME).error("Failed to initialize Cardano Watcher plugin:", err);
     throw err;
   });
-} else {
-  module.exports = {};
 }

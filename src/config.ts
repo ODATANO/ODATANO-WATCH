@@ -1,4 +1,9 @@
 import cds from "@sap/cds";
+import { config as loadEnv } from "dotenv";
+import { env } from "process";
+
+// Load .env file
+loadEnv();
 
 export interface PollingConfig {
   enabled: boolean;
@@ -21,9 +26,12 @@ export interface CardanoWatcherConfig {
   transactionPolling?: PollingConfig;    // Check if submitted transactions are in the network
 }
 
- let configuration: CardanoWatcherConfig = {
-  network: "mainnet",
-  blockfrostApiKey: undefined,
+// Log environment variable for debugging
+console.log("[config] BLOCKFROSTKEY from env:", env.BLOCKFROSTKEY ? "SET (length: " + env.BLOCKFROSTKEY.length + ")" : "NOT SET");
+
+let configuration: CardanoWatcherConfig = {
+  network: "preview",
+  blockfrostApiKey: env.BLOCKFROSTKEY,
   blockfrostProjectId: undefined,
   autoStart: true,
   maxRetries: 3,
@@ -69,7 +77,7 @@ function validateConfiguration(): void {
 
   if (!configuration.blockfrostApiKey && !configuration.blockfrostProjectId) {
     cds.log("/cardanoWatcher/config").warn(
-      "No Blockfrost API key configured. Configure via cds.env.cardanoWatcher"
+      "No Blockfrost API key configured. Set BLOCKFROSTKEY environment variable or configure via cds.env.cardanoWatcher"
     );
   }
 }

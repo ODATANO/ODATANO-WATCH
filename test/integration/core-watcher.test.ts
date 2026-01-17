@@ -25,66 +25,60 @@ describe('Core Watcher Integration Tests', () => {
   const test = cds.test(__dirname + '/../../');
   const expect = test.expect;
 
+  // Reset the database before each test to ensure a clean state
+  beforeEach(async () => {
+    await test.data.reset();
+  });
+
   describe('Watcher Action Tests', () => {
 
     it('POST /startWatcher - start the watcher successfully', async () => {
       const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/startWatcher', {});
      
       console.log(data);
-      expect(data.value).to.be.a('string');
-      expect(data.value).to.include('started');
       expect(status).to.equal(200);
+      expect(data).to.have.property('success');
+      expect(data.success).to.be.true;
+      expect(data).to.have.property('message');
+      expect(data.message).to.include('started');
     });
-
 
     it('POST /stopWatcher - stop the watcher successfully', async () => {
       const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/stopWatcher', {});
-      expect(data.value).to.be.a('string');
-      expect(data.value).to.include('stopped');
       expect(status).to.equal(200);
-    });
-
-    it('POST /startAddressPolling - start address polling', async () => {
-      const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/startAddressPolling', {});
-      expect(status).to.equal(200);
-      expect(data.value).to.be.a('string');
-      expect(data.value).to.include('Address polling');
-    });
-
-    it('POST /stopAddressPolling - stop address polling', async () => {
-      const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/stopAddressPolling', {});
-      expect(status).to.equal(200);
-      expect(data.value).to.be.a('string');
-      expect(data.value).to.include('Address polling');
-    });
-
-    it('POST /startTransactionPolling - start transaction polling', async () => {
-      const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/startTransactionPolling', {});
-      expect(status).to.equal(200);
-      expect(data.value).to.be.a('string');
-      expect(data.value).to.include('Transaction polling');
-    });
-
-    it('POST /stopTransactionPolling - stop transaction polling', async () => {
-      const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/stopTransactionPolling', {});
-      expect(status).to.equal(200);
-      expect(data.value).to.be.a('string');
-      expect(data.value).to.include('Transaction polling');
+      expect(data).to.have.property('success');
+      expect(data.success).to.be.true;
+      expect(data).to.have.property('message');
+      expect(data.message).to.include('stopped');
     });
 
     it('POST /getWatcherStatus - get current watcher status', async () => {
       const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/getWatcherStatus', {});
       expect(status).to.equal(200);
+      
+      // Verify basic structure
       expect(data).to.have.property('isRunning');
       expect(data).to.have.property('addressPolling');
       expect(data).to.have.property('transactionPolling');
       expect(data).to.have.property('network');
+      
+      // Verify network is a non-empty string
+      expect(data.network).to.be.a('string');
+      expect(data.network.length).to.be.greaterThan(0);
+      
+      // Verify polling intervals
       expect(data).to.have.property('pollingIntervals');
       expect(data.pollingIntervals).to.have.property('address');
       expect(data.pollingIntervals).to.have.property('transaction');
+      expect(data.pollingIntervals.address).to.be.greaterThan(0);
+      expect(data.pollingIntervals.transaction).to.be.greaterThan(0);
+      
+      // Verify watch counts
       expect(data).to.have.property('watchCounts');
       expect(data.watchCounts).to.have.property('addresses');
       expect(data.watchCounts).to.have.property('submissions');
+      expect(data.watchCounts.addresses).to.be.at.least(0);
+      expect(data.watchCounts.submissions).to.be.at.least(0);
     });
 
     it('POST /addWatchedAddress - add a new watched address', async () => {
@@ -110,56 +104,7 @@ describe('Core Watcher Integration Tests', () => {
       expect(response.data).to.have.property('error');
     });
 
-    it('POST /submitAndTrackTransaction - submit and track a transaction', async () => {
-      const requestBody = {
-        txHash: WATCHER_FIXTURE.transactionToWatch,
-        description: 'Test transaction for integration testing',
-        network: WATCHER_FIXTURE.network,
-        metadata: JSON.stringify({ test: true })
-      };
-      const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/submitAndTrackTransaction', requestBody);
-      expect(status).to.equal(200);
-      expect(data).to.have.property('txHash');
-      expect(data.txHash).to.equal(WATCHER_FIXTURE.transactionToWatch);
-      expect(data).to.have.property('currentStatus');
-      expect(data.currentStatus).to.equal('PENDING');
-      expect(data).to.have.property('active');
-      expect(data.active).to.be.true;
-    });
-
-    it('POST /submitAndTrackTransaction - error when txHash is missing', async () => {
-      const requestBody = {
-        description: 'Missing txHash'
-      };
-      const response = await test.post('/odata/v4/cardano-watcher-admin/submitAndTrackTransaction', requestBody).catch(err => err.response);
-      expect(response.status).to.equal(400);
-      expect(response.data).to.have.property('error');
-    });
-
-    it('POST /updateTransactionStatus - update transaction status', async () => {
-      // First create a transaction
-      const createBody = {
-        txHash: WATCHER_FIXTURE.transactionToWatch2,
-        description: 'Test transaction for status update',
-        network: WATCHER_FIXTURE.network
-      };
-      const createResponse = await test.post('/odata/v4/cardano-watcher-admin/submitAndTrackTransaction', createBody);
-      const txHash = createResponse.data.txHash;
-
-      // Now update the status
-      const updateBody = {
-        txHash: txHash,
-        status: 'CONFIRMED'
-      };
-      const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/updateTransactionStatus', updateBody);
-      expect(status).to.equal(200);
-      expect(data).to.have.property('txHash');
-      expect(data.txHash).to.equal(txHash);
-      expect(data).to.have.property('currentStatus');
-      expect(data.currentStatus).to.equal('CONFIRMED');
-    });
-
-    it('POST /removeWatch - remove an address watch', async () => {
+    it('POST /removeWatchedAddress - remove an address watch', async () => {
       // First create a watched address
       const createBody = {
         address: WATCHER_FIXTURE.addressToWatch2,
@@ -171,29 +116,73 @@ describe('Core Watcher Integration Tests', () => {
 
       // Now remove the watch
       const removeBody = {
-        watchType: 'address',
-        key: address
+        address: address
       };
-      const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/removeWatch', removeBody);
+      const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/removeWatchedAddress', removeBody);
       expect(status).to.equal(200);
-      expect(data).to.have.property('value');
-      expect(data.value).to.be.true;
+      expect(data).to.have.property('success');
+      expect(data.success).to.be.true;
+      expect(data).to.have.property('message');
+      expect(data.message).to.include(address);
     });
 
-    it('POST /removeWatch - error when watchType is missing', async () => {
-      const requestBody = {
-        key: 'some-key'
-      };
-      const response = await test.post('/odata/v4/cardano-watcher-admin/removeWatch', requestBody).catch(err => err.response);
+    it('POST /removeWatchedAddress - error when address is missing', async () => {
+      const requestBody = {};
+      const response = await test.post('/odata/v4/cardano-watcher-admin/removeWatchedAddress', requestBody).catch(err => err.response);
       expect(response.status).to.equal(400);
       expect(response.data).to.have.property('error');
     });
 
-    it('POST /removeWatch - error when ID is missing', async () => {
+    it('POST /addWatchedTransaction - submit and track a transaction', async () => {
       const requestBody = {
-        watchType: 'address'
+        txHash: WATCHER_FIXTURE.transactionToWatch,
+        description: 'Test transaction for integration testing',
+        network: WATCHER_FIXTURE.network
       };
-      const response = await test.post('/odata/v4/cardano-watcher-admin/removeWatch', requestBody).catch(err => err.response);
+      const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/addWatchedTransaction', requestBody);
+      expect(status).to.equal(200);
+      expect(data).to.have.property('txHash');
+      expect(data.txHash).to.equal(WATCHER_FIXTURE.transactionToWatch);
+      expect(data).to.have.property('currentStatus');
+      expect(data.currentStatus).to.equal('PENDING');
+      expect(data).to.have.property('active');
+      expect(data.active).to.be.true;
+    });
+
+    it('POST /addWatchedTransaction - error when txHash is missing', async () => {
+      const requestBody = {
+        description: 'Missing txHash'
+      };
+      const response = await test.post('/odata/v4/cardano-watcher-admin/addWatchedTransaction', requestBody).catch(err => err.response);
+      expect(response.status).to.equal(400);
+      expect(response.data).to.have.property('error');
+    });
+
+    it('POST /removeWatchedTransaction - remove a transaction watch', async () => {
+      // First create a watched transaction
+      const createBody = {
+        txHash: WATCHER_FIXTURE.transactionToWatch2,
+        description: 'Test transaction for removal',
+        network: WATCHER_FIXTURE.network
+      };
+      const createResponse = await test.post('/odata/v4/cardano-watcher-admin/addWatchedTransaction', createBody);
+      const txHash = createResponse.data.txHash;
+
+      // Now remove the watch
+      const removeBody = {
+        txHash: txHash
+      };
+      const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/removeWatchedTransaction', removeBody);
+      expect(status).to.equal(200);
+      expect(data).to.have.property('success');
+      expect(data.success).to.be.true;
+      expect(data).to.have.property('message');
+      expect(data.message).to.include(txHash);
+    });
+
+    it('POST /removeWatchedTransaction - error when txHash is missing', async () => {
+      const requestBody = {};
+      const response = await test.post('/odata/v4/cardano-watcher-admin/removeWatchedTransaction', requestBody).catch(err => err.response);
       expect(response.status).to.equal(400);
       expect(response.data).to.have.property('error');
     });
@@ -278,32 +267,6 @@ describe('Core Watcher Integration Tests', () => {
       expect(Array.isArray(data.value)).to.be.true;
     });
 
-    it('GET /Transactions - retrieve all transactions', async () => {
-      const { status, data } = await test.get('/odata/v4/cardano-watcher-admin/Transactions');
-      expect(status).to.equal(200);
-      expect(data).to.have.property('value');
-      expect(Array.isArray(data.value)).to.be.true;
-    });
-
-    it('GET /Transactions - filter by network', async () => {
-      const { status, data } = await test.get(`/odata/v4/cardano-watcher-admin/Transactions?$filter=network eq '${WATCHER_FIXTURE.network}'`);
-      expect(status).to.equal(200);
-      expect(data).to.have.property('value');
-      expect(Array.isArray(data.value)).to.be.true;
-      if (data.value.length > 0) {
-        data.value.forEach((tx: any) => {
-          expect(tx.network).to.equal(WATCHER_FIXTURE.network);
-        });
-      }
-    });
-
-    it('GET /Transactions - filter by mempool status', async () => {
-      const { status, data } = await test.get('/odata/v4/cardano-watcher-admin/Transactions?$filter=inMempool eq true');
-      expect(status).to.equal(200);
-      expect(data).to.have.property('value');
-      expect(Array.isArray(data.value)).to.be.true;
-    });
-
     it('GET /WatcherConfigs - retrieve all watcher configurations', async () => {
       const { status, data } = await test.get('/odata/v4/cardano-watcher-admin/WatcherConfigs');
       expect(status).to.equal(200);
@@ -358,7 +321,7 @@ describe('Core Watcher Integration Tests', () => {
         description: 'Validation test transaction',
         network: WATCHER_FIXTURE.network
       };
-      await test.post('/odata/v4/cardano-watcher-admin/submitAndTrackTransaction', createBody);
+      await test.post('/odata/v4/cardano-watcher-admin/addWatchedTransaction', createBody);
 
       const { status, data } = await test.get('/odata/v4/cardano-watcher-admin/TransactionSubmissions');
       expect(status).to.equal(200);
@@ -387,17 +350,16 @@ describe('Core Watcher Integration Tests', () => {
       }
     });
 
-    it('GET /Transactions - verify entity structure', async () => {
-      const { status, data } = await test.get('/odata/v4/cardano-watcher-admin/Transactions');
+    it('GET /WatcherConfigs - verify entity structure', async () => {
+      const { status, data } = await test.get('/odata/v4/cardano-watcher-admin/WatcherConfigs');
       expect(status).to.equal(200);
       expect(data).to.have.property('value');
       
       if (data.value.length > 0) {
-        const transaction = data.value[0];
-        expect(transaction).to.have.property('txHash');
-        expect(transaction).to.have.property('network');
-        expect(transaction).to.have.property('status');
-        expect(transaction).to.have.property('inMempool');
+        const config = data.value[0];
+        expect(config).to.have.property('configKey');
+        expect(config).to.have.property('value');
+        expect(config).to.have.property('description');
       }
     });
   });
@@ -405,46 +367,19 @@ describe('Core Watcher Integration Tests', () => {
   describe('Watcher Status Integration Tests', () => {
 
     it('POST /getWatcherStatus - verify watch counts after adding items', async () => {
-      // Get initial status
-      const initialStatus = await test.post('/odata/v4/cardano-watcher-admin/getWatcherStatus', {});
-
-      console.log(initialStatus);
-      const initialAddressCount = initialStatus.data.watchCounts.addresses;
-
-      // Add a new watched address
+      // Add a new watched address (using valid Bech32 address from fixtures)
       await test.post('/odata/v4/cardano-watcher-admin/addWatchedAddress', {
-        address: 'addr_test1vzstatustest123456789012345678901234567890123456789012',
+        address: WATCHER_FIXTURE.addressToWatch,
         description: 'Status count test',
         network: WATCHER_FIXTURE.network
       });
 
-      // Get updated status
-      const updatedStatus = await test.post('/odata/v4/cardano-watcher-admin/getWatcherStatus', {});
-      const updatedAddressCount = updatedStatus.data.watchCounts.addresses;
+      // Get status after adding address
+      const status = await test.post('/odata/v4/cardano-watcher-admin/getWatcherStatus', {});
+      const addressCount = status.data.watchCounts.addresses;
 
-      // Updated count should be at least 1 more than initial
-      expect(updatedAddressCount - initialAddressCount).to.equal(1);
-    });
-
-    it('POST /getWatcherStatus - verify network matches fixture', async () => {
-      const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/getWatcherStatus', {});
-      expect(status).to.equal(200);
-      expect(data.network).to.be.a('string');
-      expect(data.network.length).to.be.greaterThan(0);
-    });
-
-    it('POST /getWatcherStatus - verify polling intervals are positive', async () => {
-      const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/getWatcherStatus', {});
-      expect(status).to.equal(200);
-      expect(data.pollingIntervals.address).to.be.greaterThan(0);
-      expect(data.pollingIntervals.transaction).to.be.greaterThan(0);
-    });
-
-    it('POST /getWatcherStatus - verify watch counts are non-negative', async () => {
-      const { status, data } = await test.post('/odata/v4/cardano-watcher-admin/getWatcherStatus', {});
-      expect(status).to.equal(200);
-      expect(data.watchCounts.addresses).to.be.at.least(0);
-      expect(data.watchCounts.submissions).to.be.at.least(0);
+      // Count should be 1 (since database is reset before each test)
+      expect(addressCount).to.equal(1);
     });
   });
 });

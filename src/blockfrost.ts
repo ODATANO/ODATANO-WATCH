@@ -1,17 +1,15 @@
 import cds from "@sap/cds";
 import { BlockFrostAPI } from "@blockfrost/blockfrost-js";
+import { CdsTimestamp } from "../@cds-models/_";
 
-export interface TransactionData {
+export interface TransactionInfo {
   txHash: string;
-  blockNumber: number;
   blockHash: string;
-  sender: string | null;
-  receiver: string | null;
+  blockHeight: number;
   amount: number;
   fee: number;
-  metadata: any;
-  assets: any[];
-  timestamp?: number;
+  confirmations: number;
+  lastSeen: CdsTimestamp;
 }
 
 export interface BlockInfo {
@@ -26,6 +24,7 @@ export interface AddressInfo {
   balance: number;
   stakeAddress: string | null;
   type: string;
+  transactions?: TransactionInfo[];
 }
 
 const COMPONENT_NAME = "/cardanoWatcher/blockfrost";
@@ -43,19 +42,18 @@ export function initializeClient(config: any): any {
   try {
     blockfrostClient = new BlockFrostAPI({
       projectId: config.blockfrostProjectId || config.blockfrostApiKey,
-      network: config.network === "mainnet" ? "mainnet" : config.network,
+      network: config.network,
     });
 
     cds.log(COMPONENT_NAME).info("Blockfrost client initialized", {
       network: config.network,
+      projectId: (config.blockfrostProjectId || config.blockfrostApiKey)?.substring(0, 10) + "..."
     });
 
     return blockfrostClient;
   } catch (err) {
-    cds.log(COMPONENT_NAME).warn(
-      "Blockfrost not available. Install @blockfrost/blockfrost-js to use Blockfrost integration"
-    );
-    return null;
+    cds.log(COMPONENT_NAME).error("Failed to initialize Blockfrost client:", err);
+    throw err;
   }
 }
 
@@ -65,12 +63,13 @@ export function initializeClient(config: any): any {
 export async function fetchAddressTransactions(
   address: string,
   fromBlock: number | null = null
-): Promise<TransactionData[]> {
-  if (!blockfrostClient) {
-    return [];
-  }
+): Promise<TransactionInfo[] | null> {
 
   const logger = cds.log(COMPONENT_NAME);
+  
+  if (!blockfrostClient) {
+    return null;
+  }
 
   try {
     logger.debug(`Fetching transactions for address: ${address}`);
@@ -84,12 +83,12 @@ export async function fetchAddressTransactions(
     );
 
     if (!transactions || transactions.length === 0) {
-      return [];
+      return null;
     }
 
     logger.debug(`Found ${transactions.length} transactions`);
 
-    const parsedTxs: TransactionData[] = [];
+    const parsedTxs: TransactionInfo[] = [];
     for (const tx of transactions) {
       try {
         const txDetails = await blockfrostClient.txs(tx.tx_hash);
@@ -99,37 +98,22 @@ export async function fetchAddressTransactions(
           continue;
         }
 
-        const sender = txUtxos.inputs[0]?.address || null;
-        const receiver = txUtxos.outputs[0]?.address || null;
         const amount = txUtxos.outputs[0]?.amount
           ? parseFloat(txUtxos.outputs[0].amount.find((a: any) => a.unit === "lovelace")?.quantity || 0) / 1000000
           : 0;
 
-        const assets = txUtxos.outputs.flatMap((output: any) => 
-          output.amount.filter((a: any) => a.unit !== "lovelace")
-        );
-
-        let metadata = null;
-        try {
-          if (txDetails.metadata_count > 0) {
-            const txMetadata = await blockfrostClient.txsMetadata(tx.tx_hash);
-            metadata = txMetadata;
-          }
-        } catch (metaErr) {
-          logger.debug(`No metadata for tx ${tx.tx_hash}`);
-        }
+        const latestBlock = await blockfrostClient.blocksLatest();
+        
+        const confirmations = latestBlock.height - txDetails.block_height;
 
         parsedTxs.push({
           txHash: tx.tx_hash,
-          blockNumber: txDetails.block_height,
+          blockHeight: txDetails.block_height,
           blockHash: txDetails.block,
-          sender,
-          receiver,
           amount,
           fee: parseFloat(txDetails.fees) / 1000000,
-          metadata,
-          assets,
-          timestamp: txDetails.block_time,
+          lastSeen: txDetails.block_time,
+          confirmations,
         });
 
       } catch (txErr) {
@@ -137,7 +121,7 @@ export async function fetchAddressTransactions(
       }
     }
 
-    return parsedTxs;
+    return parsedTxs.length > 0 ? parsedTxs : null;
 
   } catch (err) {
     logger.error(`Error fetching transactions for ${address}:`, err);
@@ -177,11 +161,15 @@ export async function getAddressInfo(address: string): Promise<AddressInfo | nul
 
   try {
     const info = await blockfrostClient.addresses(address);
+    
+    const transactions = await fetchAddressTransactions(address);
+
     return {
       address: info.address,
       balance: parseFloat(info.amount.find((a: any) => a.unit === "lovelace")?.quantity || 0) / 1000000,
       stakeAddress: info.stake_address,
       type: info.type,
+      transactions: transactions || [],
     };
   } catch (err) {
     cds.log(COMPONENT_NAME).error(`Error fetching address info for ${address}:`, err);
@@ -189,32 +177,29 @@ export async function getAddressInfo(address: string): Promise<AddressInfo | nul
   }
 }
 
-export async function getTransaction(hash: string): Promise<any | null> {
+export async function getTransaction(hash: string): Promise<TransactionInfo | null> {
   if (!blockfrostClient) {
     return null;
   }
   
   try {
     const tx = await blockfrostClient.txs(hash);
-    const txUtxos = await blockfrostClient.txsUtxos(hash);
     
     // Get latest block to calculate confirmations
     const latestBlock = await blockfrostClient.blocksLatest();
     const confirmations = latestBlock.height - tx.block_height;
     
     return {
-      hash: tx.hash,
-      blockHeight: tx.block_height,
+      txHash: tx.hash,
       blockHash: tx.block,
-      fees: parseFloat(tx.fees) / 1000000,
+      blockHeight: tx.block_height,
+      amount: parseFloat(tx.output_amount.find((a: any) => a.unit === "lovelace")?.quantity || 0) / 1000000,
+      fee: parseFloat(tx.fees) / 1000000,
       confirmations,
-      blockTime: tx.block_time,
-      slot: tx.slot,
-      inputs: txUtxos.inputs,
-      outputs: txUtxos.outputs,
+      lastSeen: tx.block_time,
     };
   } catch (err) {
-    // Transaction might not exist or be in mempool
+    // Transaction might not be on chain yet or be in mempool
     cds.log(COMPONENT_NAME).debug(`Transaction ${hash} not found:`, err);
     return null;
   }

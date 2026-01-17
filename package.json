@@ -34,7 +34,10 @@
   "cds": {
     "requires": {
       "db": {
-        "kind": "sql"
+        "kind": "sqlite",
+        "credentials": {
+          "url": "cardano-watcher.db"
+        }
       }
     }
   },
@@ -47,12 +50,11 @@
     "LICENSE"
   ],
   "dependencies": {
+    "@blockfrost/blockfrost-js": "^5.4.0",
+    "dotenv": "^17.2.3",
     "pino": "^9.0.0",
     "pino-pretty": "^13.0.0",
     "sqlite3": "^5.1.7"
-  },
-  "optionalDependencies": {
-    "@blockfrost/blockfrost-js": "^5.4.0"
   },
   "devDependencies": {
     "@cap-js/cds-test": "^0.4.1",

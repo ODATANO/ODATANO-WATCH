@@ -1,13 +1,19 @@
 import cds, { Request } from "@sap/cds";
 const { SELECT, INSERT, UPDATE } = cds.ql;
 import * as watcher from "../src/watcher";
+import * as cardanoWatcher from "../src/index";
 import { rejectMissing, rejectInvalid } from './utils/errors';
-import { isValidBech32Address, isValidNetwork, isTxHash, isNonEmptyString } from './utils/validators';
+import { isValidBech32Address, isValidNetwork, isTxHash } from './utils/validators';
 import { handleRequest } from './utils/backend-request-handler';
 import logger from './utils/logger';
 import type { WatchedAddress, TransactionSubmission } from '../@cds-models/CardanoWatcherAdminService';
 
 const COMPONENT_NAME = '[CardanoWatcherAdminService]';
+
+// Initialize Cardano Watcher on module load
+cardanoWatcher.initialize().catch((err) => {
+  logger.error("Failed to initialize Cardano Watcher:", err);
+});
 
 /**
  * Cardano Watcher Admin Service Implementation
@@ -34,7 +40,7 @@ module.exports = (srv: cds.Service) => {
     return handleRequest(req, async () => {
       await watcher.start();
       logger.info("Watcher started successfully");
-      return "Watcher started successfully";
+      return { success: true, message: "Watcher started successfully"};
     });
   });
 
@@ -47,59 +53,7 @@ module.exports = (srv: cds.Service) => {
     return handleRequest(req, async () => {
       await watcher.stop();
       logger.info("Watcher stopped successfully");
-      return "Watcher stopped successfully";
-    });
-  });
-
-  /**
-   * Start Address Polling
-   */
-  srv.on("startAddressPolling", async (req: Request) => {
-    logger.debug(`${COMPONENT_NAME} startAddressPolling action called`);
-    
-    return handleRequest(req, async () => {
-      await watcher.startAddressPolling();
-      logger.info("Address polling started");
-      return "Address polling started";
-    });
-  });
-
-  /**
-   * Start Transaction Polling
-   */
-  srv.on("startTransactionPolling", async (req: Request) => {
-    logger.debug(`${COMPONENT_NAME} startTransactionPolling action called`);
-    
-    return handleRequest(req, async () => {
-      await watcher.startTransactionPolling();
-      logger.info("Transaction polling started");
-      return "Transaction polling started";
-    });
-  });
-
-  /**
-   * Stop Address Polling
-   */
-  srv.on("stopAddressPolling", async (req: Request) => {
-    logger.debug(`${COMPONENT_NAME} stopAddressPolling action called`);
-    
-    return handleRequest(req, async () => {
-      await watcher.stopAddressPolling();
-      logger.info("Address polling stopped");
-      return "Address polling stopped";
-    });
-  });
-
-  /**
-   * Stop Transaction Polling
-   */
-  srv.on("stopTransactionPolling", async (req: Request) => {
-    logger.debug(`${COMPONENT_NAME} stopTransactionPolling action called`);
-    
-    return handleRequest(req, async () => {
-      await watcher.stopTransactionPolling();
-      logger.info("Transaction polling stopped");
-      return "Transaction polling stopped";
+      return { success: true, message: "Watcher stopped successfully"};
     });
   });
 
@@ -127,12 +81,10 @@ module.exports = (srv: cds.Service) => {
         isRunning: status.isRunning,
         addressPolling: status.addressPolling,
         transactionPolling: status.transactionPolling,
-        mempoolPolling: status.mempoolPolling,
         network: status.config.network || "preview",
         pollingIntervals: {
           address: status.config.addressPolling?.interval || 30,
           transaction: status.config.transactionPolling?.interval || 60,
-          mempool: status.config.mempoolPolling?.interval || 10,
         },
         watchCounts: {
           addresses: Array.isArray(addressCount) ? addressCount.length : 0,
@@ -165,13 +117,13 @@ module.exports = (srv: cds.Service) => {
     }
 
     return handleRequest(req, async (db: any) => {
-      // Check if already exists
+      // check if already exists / being watched
       const existing = await db.run(SELECT.one.from(WatchedAddresses).where({ address }));
       if (existing) {
         return rejectInvalid('addWatchedAddress', `Address ${address} is already being watched`, 'address');
       }
 
-      // Create new watch entry
+      // create new watch entry
       const watchedAddressEntry: WatchedAddress = {
         address,
         description: description || null,
@@ -180,11 +132,33 @@ module.exports = (srv: cds.Service) => {
         lastCheckedBlock: null,
       };
 
-      await db.run(INSERT.into(WatchedAddresses).entries(watchedAddressEntry));
-
-      logger.info({ address }, "Added watched address");
+      const result = await db.run(INSERT.into(WatchedAddresses).entries(watchedAddressEntry));
+      
+      logger.info({ address, result }, "Added watched address");
 
       return watchedAddressEntry;
+    });
+  });
+
+  srv.on("removeWatchedAddress", async (req: Request) => {
+    logger.debug(`${COMPONENT_NAME} removeWatchedAddress action called`);
+    const { address } = req.data;
+
+    // Validate inputs
+    if (!address) return rejectMissing('removeWatchedAddress', 'address');
+    if (!isValidBech32Address(address)) {
+      return rejectInvalid('removeWatchedAddress', 'Invalid Bech32 address format', 'address');
+    } 
+    return handleRequest(req, async (db: any) => {
+      // Check if exists
+      const existing = await db.run(SELECT.one.from(WatchedAddresses).where({ address }));
+      if (!existing) {
+        return rejectInvalid('removeWatchedAddress', `Address ${address} is not being watched`, 'address');
+      }
+      // Remove watch entry
+      const result = await db.run(UPDATE(WatchedAddresses).set({ active: false }).where({ address }));
+      logger.info({ address, result }, "Removed watched address");
+      return { success: true, message: `Stopped watching address ${address}` };
     });
   });
 
@@ -196,163 +170,62 @@ module.exports = (srv: cds.Service) => {
    * Submit and Track Transaction
    * Submits a transaction hash for status tracking
    */
-  srv.on("submitAndTrackTransaction", async (req: Request) => {
-    logger.debug(`${COMPONENT_NAME} submitAndTrackTransaction action called`);
-    const { txHash, description, network, metadata } = req.data;
+  srv.on("addWatchedTransaction", async (req: Request) => {
+    logger.debug(`${COMPONENT_NAME} TrackSubmittedTransaction action called`);
+    const { txHash, description, network } = req.data;
     
     // Validate inputs
-    if (!txHash) return rejectMissing('submitAndTrackTransaction', 'txHash');
+    if (!txHash) return rejectMissing('TrackSubmittedTransaction', 'txHash');
     if (!isTxHash(txHash)) {
-      return rejectInvalid('submitAndTrackTransaction', 'Invalid transaction hash format', 'txHash');
+      return rejectInvalid('TrackSubmittedTransaction', 'Invalid transaction hash format', 'txHash');
     }
     if (network && !isValidNetwork(network)) {
-      return rejectInvalid('submitAndTrackTransaction', 'Invalid network', 'network');
+      return rejectInvalid('TrackSubmittedTransaction', 'Invalid network', 'network');
     }
 
     return handleRequest(req, async (db: any) => {
       // Check if already exists
       const existing = await db.run(SELECT.one.from(TransactionSubmissions).where({ txHash }));
       if (existing) {
-        return rejectInvalid('submitAndTrackTransaction', `Transaction ${txHash} is already being tracked`, 'txHash');
+        return rejectInvalid('TrackSubmittedTransaction', `Transaction ${txHash} is already being tracked`, 'txHash');
       }
       
       // Create new submission entry
       const submissionEntry: TransactionSubmission = {
         txHash,
         description: description || null,
-        network: network || watcher.getStatus().config.network || 'preview',
+        network: network,
         active: true,
         currentStatus: "PENDING",
         confirmations: 0,
-        metadata: metadata || null,
-        submittedBy: req.user?.id || "system",
       };
 
       await db.run(INSERT.into(TransactionSubmissions).entries(submissionEntry));
       
-      logger.info({ txHash }, "Submitted and tracking transaction");
+      logger.info({ txHash }, "TrackSubmittedTransaction action called");
       
       return submissionEntry;
     });
   });
 
-  /**
-   * Update Transaction Status
-   * Manually update the status of a tracked transaction
-   */
-  srv.on("updateTransactionStatus", async (req: Request) => {
-    logger.debug(`${COMPONENT_NAME} updateTransactionStatus action called`);
-    const { txHash, status } = req.data;
-
+  srv.on("removeWatchedTransaction", async (req: Request) => {
+    logger.debug(`${COMPONENT_NAME} removeWatchedTransaction action called`);
+    const { txHash } = req.data;
     // Validate inputs
-    if (!txHash) return rejectMissing('updateTransactionStatus', 'txHash');
-    if (!status) return rejectMissing('updateTransactionStatus', 'status');
+    if (!txHash) return rejectMissing('removeWatchedTransaction', 'txHash');
     if (!isTxHash(txHash)) {
-      return rejectInvalid('updateTransactionStatus', 'Invalid transaction hash format', 'txHash');
+      return rejectInvalid('removeWatchedTransaction', 'Invalid transaction hash format', 'txHash');
     }
-
-    const validStatuses = ['PENDING', 'CONFIRMED', 'FAILED'];
-    if (!validStatuses.includes(status.toUpperCase())) {
-      return rejectInvalid('updateTransactionStatus', `Invalid status (must be one of: ${validStatuses.join(', ')})`, 'status');
-    }
-
     return handleRequest(req, async (db: any) => {
-      const result = await db.run(
-        UPDATE.entity(TransactionSubmissions)
-          .set({ currentStatus: status.toUpperCase(), lastChecked: new Date().toISOString() })
-          .where({ txHash })
-      );
-      
-      if (!result || result === 0) {
-        return rejectInvalid('updateTransactionStatus', `Transaction ${txHash} not found`, 'txHash');
+      // Check if exists
+      const existing = await db.run(SELECT.one.from(TransactionSubmissions).where({ txHash }));
+      if (!existing) {
+        return rejectInvalid('removeWatchedTransaction', `Transaction ${txHash} is not being tracked`, 'txHash');
       }
-
-      logger.info({ txHash, status }, "Updated transaction status");
-      
-      // Return updated record
-      return await db.run(SELECT.one.from(TransactionSubmissions).where({ txHash }));
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // Watch Management Actions
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Remove Watch
-   * Remove an address or transaction from monitoring
-   */
-  srv.on("removeWatch", async (req: Request) => {
-    logger.debug(`${COMPONENT_NAME} removeWatch action called`);
-    const { watchType, key } = req.data;
-
-    // Validate inputs
-    if (!watchType) return rejectMissing('removeWatch', 'watchType');
-    if (!key) return rejectMissing('removeWatch', 'key');
-    if (!isNonEmptyString(watchType)) {
-      return rejectInvalid('removeWatch', 'watchType must be a non-empty string', 'watchType');
-    }
-    if (!isNonEmptyString(key)) {
-      return rejectInvalid('removeWatch', 'key must be a non-empty string', 'key');
-    }
-
-    return handleRequest(req, async (db: any) => {
-      let entity;
-      let whereClause;
-      
-      switch (watchType.toLowerCase()) {
-        case "address":
-          if (!isValidBech32Address(key)) {
-            return rejectInvalid('removeWatch', 'Invalid address format', 'key');
-          }
-          entity = WatchedAddresses;
-          whereClause = { address: key };
-          break;
-        case "transaction":
-          if (!isTxHash(key)) {
-            return rejectInvalid('removeWatch', 'Invalid transaction hash format', 'key');
-          }
-          entity = TransactionSubmissions;
-          whereClause = { txHash: key };
-          break;
-        default:
-          return rejectInvalid('removeWatch', `Unknown watch type: ${watchType} (must be 'address' or 'transaction')`, 'watchType');
-      }
-
-      const result = await db.run(
-        UPDATE.entity(entity)
-          .set({ active: false })
-          .where(whereClause)
-      );
-
-      if (!result || result === 0) {
-        return rejectInvalid('removeWatch', `${watchType} ${key} not found`, 'key');
-      }
-      
-      logger.info({ watchType, key }, "Removed watch");
-      
-      return { value: true };
-    });
-  });
-
-  /**
-   * Manual Poll
-   * Trigger a manual polling cycle for all active watches
-   */
-  srv.on("manualPoll", async (req: Request) => {
-    logger.debug(`${COMPONENT_NAME} manualPoll action called`);
-    
-    return handleRequest(req, async () => {
-      // Trigger manual poll
-      const eventsDetected = await watcher.manualPoll();
-      
-      logger.info({ eventsDetected }, "Manual poll completed");
-      
-      return {
-        success: true,
-        message: "Manual poll completed successfully",
-        eventsDetected: eventsDetected || 0,
-      };
+      // Remove watch entry
+      const result = await db.run(UPDATE(TransactionSubmissions).set({ active: false }).where({ txHash }));
+      logger.info({ txHash, result }, "Removed watched transaction");
+      return { success: true, message: `Stopped tracking transaction ${txHash}` };
     });
   });
 

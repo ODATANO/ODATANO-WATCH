@@ -18,8 +18,27 @@ export async function initialize(): Promise<void> {
   const logger = cds.log(COMPONENT_NAME);
   logger.info("Initializing Cardano Watcher plugin...");
 
-  // Initialize config from cds.env.cardanoWatcher
-  config.initialize();
+  // Initialize config from cds.env.cardanoWatcher (merge with defaults)
+  const envConfig = cds.env.cardanoWatcher || {};
+  logger.info("Config from cds.env:", envConfig);
+  config.initialize(envConfig);
+  
+  const cfg = config.get();
+  logger.info("Final config:", { 
+    network: cfg.network, 
+    hasApiKey: !!cfg.blockfrostApiKey,
+    apiKeyLength: cfg.blockfrostApiKey?.length 
+  });
+
+  // Check if database is already connected
+  const db = await cds.connect.to('db');
+  if (db) {
+    logger.info("Database already connected, setting up Cardano Watcher...");
+    await watcher.setup();
+    logger.info("Cardano Watcher initialized successfully");
+    initialized = true;
+    return;
+  }
 
   // Wait for database connection
   let initFinished: () => void;
@@ -96,7 +115,7 @@ export function getConfig(): CardanoWatcherConfig {
 
 // Export types
 export type { CardanoWatcherConfig } from "./config";
-export type { TransactionData, AddressInfo } from "./blockfrost";
+export type { TransactionInfo, AddressInfo } from "./blockfrost";
 
 // Event payload types
 export interface NewTransactionsEvent {

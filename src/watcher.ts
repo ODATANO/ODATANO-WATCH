@@ -1,38 +1,46 @@
 import cds from "@sap/cds";
 const { SELECT, INSERT, UPDATE } = cds.ql;
+import { randomUUID } from "crypto";
 import * as config from "./config";
 import * as blockfrost from "./blockfrost";
-import type { TransactionData } from "./blockfrost";
+import type { TransactionInfo } from "./blockfrost";
+import { BlockchainEvent, TransactionSubmission ,TransactionSubmissions, WatchedAddress, WatchedAddresses } from "../@cds-models/CardanoWatcherAdminService";
 
 const COMPONENT_NAME = "/cardanoWatcher/watcher";
 
 let addressInterval: NodeJS.Timeout | null = null;
 let transactionInterval: NodeJS.Timeout | null = null;
-// let mempoolInterval: NodeJS.Timeout | null = null; // Not implemented yet
 
 let isRunning = false;
 let addressPollingActive = false;
 let transactionPollingActive = false;
-let mempoolPollingActive = false;
-
-interface WatchedAddress {
-  address: string;
-  description?: string;
-  active: boolean;
-  lastCheckedBlock: number | null;
-  network: string;
-}
 
 /**
- * Setup the watcher (called during initialization)
+ * Setup the watcher should be called once in initialization
  */
-export async function setup(): Promise<void> {
+export async function setup(): Promise<Boolean> {
   const logger = cds.log(COMPONENT_NAME);
   const cfg = config.get();
   
+  logger.info("Watcher setup - Config:", {
+    hasApiKey: !!(cfg.blockfrostApiKey || cfg.blockfrostProjectId),
+    network: cfg.network,
+    apiKeyPrefix: cfg.blockfrostApiKey?.substring(0, 10)
+  });
+  
   // Initialize Blockfrost if API key is available
   if (cfg.blockfrostApiKey || cfg.blockfrostProjectId) {
-    blockfrost.initializeClient(cfg);
+    logger.info("Initializing Blockfrost client...");
+    try {
+      blockfrost.initializeClient(cfg);
+      logger.info("Blockfrost available:", blockfrost.isAvailable());
+    } catch (err) {
+      logger.error("Failed to initialize Blockfrost:", err);
+      return false;
+    }
+  } else {
+    logger.warn("No Blockfrost API key found in configuration");
+    return false;
   }
   
   // Register shutdown handlers
@@ -42,11 +50,13 @@ export async function setup(): Promise<void> {
   if (cfg.autoStart) {
     logger.info("Auto-starting Cardano Watcher...");
     await start();
+    return true;
   }
+  return true;
 }
 
 /**
- * Start watching the blockchain (all enabled polling paths)
+ * Start watching the blockchain
  */
 export async function start(): Promise<void> {
   if (isRunning) {
@@ -61,7 +71,7 @@ export async function start(): Promise<void> {
   
   isRunning = true;
 
-  // Start individual polling paths based on config
+  // start individual polling paths based on config
   if (cfg.addressPolling?.enabled) {
     await startAddressPolling();
   }
@@ -98,6 +108,7 @@ export async function stop(): Promise<void> {
  * Start address polling
  */
 export async function startAddressPolling(): Promise<void> {
+
   if (addressPollingActive) {
     return;
   }
@@ -214,10 +225,10 @@ async function pollWatchedAddresses(): Promise<number> {
   let eventsDetected = 0;
 
   try {
-    // Get watched addresses
+    // Get all watched addresses
     const watchedAddresses = await cds.tx(async (tx: any) => {
       return tx.run(
-        SELECT.from("odatano.watch.WatchedAddress")
+        SELECT.from(WatchedAddresses)
           .where({ active: true })
       ) as Promise<WatchedAddress[]>;
     });
@@ -253,6 +264,11 @@ async function processAddress(watchedAddr: WatchedAddress): Promise<number> {
   let eventsDetected = 0;
 
   try {
+    if (!watchedAddr.address || !watchedAddr.lastCheckedBlock) {
+      logger.warn("Watched address has no address field or lastCheckedBlock is null:", watchedAddr);
+      return 0;
+    }
+
     logger.debug(`Processing address: ${watchedAddr.address}`);
 
     const transactions = await fetchAddressTransactions(watchedAddr.address, watchedAddr.lastCheckedBlock);
@@ -265,9 +281,10 @@ async function processAddress(watchedAddr: WatchedAddress): Promise<number> {
         for (const tx_data of transactions) {
           // Store blockchain event
           await tx.run(
-            INSERT.into("odatano.watch.BlockchainEvent").entries({
+            INSERT.into(BlockchainEvent).entries({
+              id: randomUUID(),
               type: "TRANSACTION",
-              blockNumber: tx_data.blockNumber,
+              blockHeight: tx_data.blockHeight,
               blockHash: tx_data.blockHash,
               txHash: tx_data.txHash,
               address_address: watchedAddr.address,
@@ -276,32 +293,15 @@ async function processAddress(watchedAddr: WatchedAddress): Promise<number> {
               processed: false,
             })
           );
-
-          // Store transaction details
+          
+           // update last checked block
+          const maxBlock = Math.max(...transactions.map(t => t.blockHeight));
           await tx.run(
-            INSERT.into("odatano.watch.Transaction").entries({
-              txHash: tx_data.txHash,
-              blockNumber: tx_data.blockNumber,
-              blockHash: tx_data.blockHash,
-              sender: tx_data.sender,
-              receiver: tx_data.receiver,
-              amount: tx_data.amount,
-              fee: tx_data.fee,
-              metadata: tx_data.metadata ? JSON.stringify(tx_data.metadata) : null,
-              assets: tx_data.assets ? JSON.stringify(tx_data.assets) : null,
-              status: "CONFIRMED",
-              network: cfg.network,
-            })
-          );
+            UPDATE.entity(WatchedAddresses)
+              .set({ lastCheckedBlock: maxBlock })
+              .where({ address: watchedAddr.address })
+            );
         }
-
-        // Update last checked block
-        const maxBlock = Math.max(...transactions.map(t => t.blockNumber));
-        await tx.run(
-          UPDATE.entity("odatano.watch.WatchedAddress")
-            .set({ lastCheckedBlock: maxBlock })
-            .where({ address: watchedAddr.address })
-        );
       });
 
       // Emit event for other parts of the application
@@ -311,7 +311,6 @@ async function processAddress(watchedAddr: WatchedAddress): Promise<number> {
         transactions: transactions.map(t => t.txHash),
       });
     }
-
   } catch (err) {
     logger.error(`Error processing address ${watchedAddr.address}:`, err);
   }
@@ -325,7 +324,7 @@ async function processAddress(watchedAddr: WatchedAddress): Promise<number> {
 async function fetchAddressTransactions(
   address: string,
   fromBlock: number | null
-): Promise<TransactionData[]> {
+): Promise<TransactionInfo[] | null> {
   const logger = cds.log(COMPONENT_NAME);
 
   // Try Blockfrost first
@@ -337,13 +336,7 @@ async function fetchAddressTransactions(
       throw err;
     }
   }
-
-  // Fallback: no data source available
-  logger.warn(
-    "No blockchain API configured. Install @blockfrost/blockfrost-js and configure API key to fetch real data."
-  );
-  
-  return [];
+  return null;
 }
 
 /**
@@ -360,7 +353,7 @@ async function pollTransactionSubmissions(): Promise<number> {
     // Get active transaction submissions
     const submissions = await cds.tx(async (tx: any) => {
       return tx.run(
-        SELECT.from("odatano.watch.TransactionSubmission")
+        SELECT.from(TransactionSubmissions)
           .where({ active: true })
       );
     });
@@ -386,101 +379,44 @@ async function pollTransactionSubmissions(): Promise<number> {
   return eventsDetected;
 }
 
-/**
- * Process a single transaction submission
- * Checks if submitted transaction is in the network (found on-chain)
- * @returns Number of events detected
- */
-async function processTransactionSubmission(submission: any): Promise<number> {
+async function processTransactionSubmission(submission: TransactionSubmission): Promise<number> {
   const logger = cds.log(COMPONENT_NAME);
   const cfg = config.get();
   let eventsDetected = 0;
-
   try {
-    logger.debug(`Checking if transaction ${submission.txHash} is in network`);
-
-    const txInfo = await blockfrost.getTransaction(submission.txHash);
-
-    if (!txInfo) {
-      // Transaction not found in network yet - still pending
-      logger.debug(`Transaction ${submission.txHash} still pending (not in network)`);
-      
-      // Update lastChecked timestamp
-      await cds.tx(async (tx: any) => {
-        await tx.run(
-          UPDATE.entity("odatano.watch.TransactionSubmission")
-            .set({ 
-              lastChecked: new Date().toISOString(),
-              currentStatus: "PENDING"
-            })
-            .where({ txHash: submission.txHash })
-        );
-      });
+    if (!submission.txHash) {
+      logger.warn("Transaction submission has no txHash:", submission);
       return 0;
     }
+    logger.debug(`Processing transaction submission: ${submission.txHash}`);
 
-    // Transaction found in network!
-    const wasPending = submission.currentStatus === "PENDING" || !submission.currentStatus;
-
-    if (wasPending) {
-      logger.info(`Transaction ${submission.txHash} confirmed in network!`);
-      eventsDetected = 1;
-
+    const txData = await blockfrost.getTransaction(submission.txHash);
+    if (txData) {
+      logger.info(`Transaction ${submission.txHash} found on chain in block ${txData.blockHeight}`);
+      eventsDetected += 1;
       await cds.tx(async (tx: any) => {
-        // Update submission status to CONFIRMED
+        // Store blockchain event
         await tx.run(
-          UPDATE.entity("odatano.watch.TransactionSubmission")
-            .set({
-              currentStatus: "CONFIRMED",
-              lastChecked: new Date().toISOString(),
-              confirmations: (txInfo as any).confirmations || 0,
-            })
-            .where({ txHash: submission.txHash })
-        );
-
-        // Create blockchain event
-        await tx.run(
-          INSERT.into("odatano.watch.BlockchainEvent").entries({
-            type: "TX_CONFIRMED",
-            txHash: submission.txHash,
-            submission_txHash: submission.txHash,
-            blockNumber: (txInfo as any).blockHeight,
-            blockHash: (txInfo as any).blockHash,
-            payload: JSON.stringify({
-              foundAt: new Date().toISOString(),
-              blockHeight: (txInfo as any).blockHeight,
-              confirmations: (txInfo as any).confirmations || 0,
-            }),
+          INSERT.into(BlockchainEvent).entries({
+            id: randomUUID(),
+            type: "TRANSACTION_SUBMISSION",
+            blockHeight: txData.blockHeight,
+            blockHash: txData.blockHash,
+            txHash: txData.txHash,
+            payload: JSON.stringify(txData),
             network: cfg.network,
             processed: false,
           })
         );
-      });
-
-      // Emit event - transaction confirmed in network
-      await (cds as any).emit("cardano.transactionConfirmed", {
-        txHash: submission.txHash,
-        blockHeight: (txInfo as any).blockHeight,
-        confirmations: (txInfo as any).confirmations || 0,
-      });
-    } else {
-      // Already in network, just update lastChecked and confirmations
-      await cds.tx(async (tx: any) => {
+        // Update submission status
         await tx.run(
-          UPDATE.entity("odatano.watch.TransactionSubmission")
-            .set({ 
-              lastChecked: new Date().toISOString(),
-              confirmations: (txInfo as any).confirmations || 0,
-            })
-            .where({ txHash: submission.txHash })
+          UPDATE.entity(TransactionSubmissions).set({ active: false }).where({ txHash: submission.txHash })
         );
       });
     }
-
   } catch (err) {
-    logger.error(`Error processing transaction ${submission.txHash}:`, err);
+    logger.error(`Error processing transaction submission ${submission.txHash}:`, err);
   }
-  
   return eventsDetected;
 }
 
@@ -491,43 +427,14 @@ export function getStatus(): {
   isRunning: boolean; 
   addressPolling: boolean;
   transactionPolling: boolean;
-  mempoolPolling: boolean;
-  config: any;
-} {
-  return {
-    isRunning,
-    addressPolling: addressPollingActive,
-    transactionPolling: transactionPollingActive,
-    mempoolPolling: mempoolPollingActive,
-    config: config.get(),
-  };
-}
-
-/**
- * Manual Poll - Trigger a one-time polling cycle
- * @returns Number of events detected
- */
-export async function manualPoll(): Promise<number> {
-  const logger = cds.log(COMPONENT_NAME);
-  logger.info("Manual poll triggered");
-  
-  let eventsDetected = 0;
-  
-  try {
-    // Poll watched addresses
-    const addressEvents = await pollWatchedAddresses();
-    eventsDetected += addressEvents || 0;
-    
-    // Poll transaction submissions
-    const txEvents = await pollTransactionSubmissions();
-    eventsDetected += txEvents || 0;
-    
-    logger.info({ eventsDetected }, "Manual poll completed");
-  } catch (err) {
-    logger.error("Error during manual poll:", err);
-    throw err;
+  config: config.CardanoWatcherConfig;
+  } 
+  {
+    return {
+      isRunning,
+      addressPolling: addressPollingActive,
+      transactionPolling: transactionPollingActive,
+      config: config.get(),
+    };
   }
-  
-  return eventsDetected;
-}
 

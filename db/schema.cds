@@ -15,6 +15,12 @@ type Bech32        : String(120);
 @description: 'Amount of ADA in lovelace (1 ADA = 1_000_000 lovelace)'
 type Lovelace      : Decimal(20, 0);
 
+@title : 'Watcher Event results'
+@description: 'Possible results from watcher event processing start / stop etc.'
+type WatcherActionResult {
+    success        : Boolean;
+    message        : String;
+  };
 // -----------------------------------------------------
 // Entities
 // -----------------------------------------------------
@@ -73,10 +79,6 @@ entity TransactionSubmission {
     @description: 'Current status of the transaction (PENDING, CONFIRMED, FAILED)'
         currentStatus    : String(20) default 'PENDING';
 
-    @title      : 'Last Checked'
-    @description: 'Timestamp of last status check'
-        lastChecked      : Timestamp;
-
     @title      : 'Confirmations'
     @description: 'Number of block confirmations'
         confirmations    : Integer default 0;
@@ -84,14 +86,6 @@ entity TransactionSubmission {
     @title      : 'Network'
     @description: 'The Cardano network (mainnet, preview, preprod)'
         network          : String(20) default 'preview';
-
-    @title      : 'Submitted By'
-    @description: 'User or service that submitted this transaction'
-        submittedBy      : String(100);
-
-    @title      : 'Metadata'
-    @description: 'Additional tracking metadata as JSON'
-        metadata         : LargeString;
 
     @title      : 'Events'
     @description: 'Blockchain events related to this submission'
@@ -171,75 +165,6 @@ entity BlockchainEvent {
 
     @title      : 'Created At'
     @description: 'Timestamp when event was detected'
-        createdAt        : Timestamp @cds.on.insert: $now;
-}
-
-@title      : 'Transaction Entity'
-@description: 'Stores detailed transaction information from the blockchain'
-entity Transaction {
-
-    @title      : 'Transaction ID (Key)'
-    @description: 'Internal unique identifier'
-    key ID               : UUID not null;
-
-    @title      : 'Transaction Hash'
-    @description: 'The unique transaction hash as hex string'
-        txHash           : Blake2b256 not null;
-
-    @title      : 'Block Number'
-    @description: 'Block number containing this transaction'
-        blockNumber      : Integer64;
-
-    @title      : 'Block Hash'
-    @description: 'Block hash containing this transaction'
-        blockHash        : Blake2b256;
-
-    @title      : 'Sender Address'
-    @description: 'Sender address in Bech32 format'
-        sender           : Bech32;
-
-    @title      : 'Receiver Address'
-    @description: 'Receiver address in Bech32 format'
-        receiver         : Bech32;
-
-    @title      : 'Amount'
-    @description: 'Amount transferred in ADA'
-        amount           : Lovelace;
-
-    @title      : 'Fee'
-    @description: 'Transaction fee in lovelace'
-        fee              : Lovelace;
-
-    @title      : 'Metadata'
-    @description: 'Transaction metadata as JSON'
-        metadata         : LargeString;
-
-    @title      : 'Native Assets'
-    @description: 'Native assets transferred as JSON array'
-        assets           : LargeString;
-
-    @title      : 'Status'
-    @description: 'Transaction status (CONFIRMED, PENDING, FAILED)'
-        status           : String(20) default 'PENDING';
-
-    @title      : 'Network'
-    @description: 'The Cardano network (mainnet, preview, preprod)'
-        network          : String(20) default 'preview';
-
-    @title      : 'In Mempool'
-    @description: 'Whether transaction is currently in mempool'
-        inMempool        : Boolean default false;
-
-    @title      : 'Mempool Entered At'
-    @description: 'Timestamp when transaction entered mempool'
-        mempoolEnteredAt : Timestamp;
-
-    @title      : 'Confirmed At'
-    @description: 'Timestamp when transaction was confirmed'
-        confirmedAt      : Timestamp;
-
-    @title      : 'Created At'
-    @description: 'Timestamp when transaction record was created'
         createdAt        : Timestamp @cds.on.insert: $now;
 }
 
