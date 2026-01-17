@@ -9,5 +9,5 @@ build/
 gen/
 .vscode/
 @cds-models
-cardano-watcher.db
+watch.db
 cds-plugin.js 

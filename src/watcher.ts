@@ -291,7 +291,7 @@ async function processAddress(watchedAddr: WatchedAddress): Promise<number> {
               payload: JSON.stringify(tx_data),
               network: cfg.network,
               processed: false,
-            })
+            } as BlockchainEvent)
           );
           
            // update last checked block
@@ -406,8 +406,8 @@ async function processTransactionSubmission(submission: TransactionSubmission): 
             payload: JSON.stringify(txData),
             network: cfg.network,
             processed: false,
-          })
-        );
+          } as BlockchainEvent)
+        );  
         // Update submission status
         await tx.run(
           UPDATE.entity(TransactionSubmissions).set({ active: false }).where({ txHash: submission.txHash })

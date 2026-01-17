@@ -4,7 +4,6 @@
     "module": "commonjs",
     "lib": ["ES2022"],
     "outDir": "./dist",
-    "rootDir": "./",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -18,19 +17,23 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "types": ["node", "jest"],
-    "noImplicitAny": false,
     "allowSyntheticDefaultImports": true,
+
+    // CAP-specific options (required for decorators like @Entity, etc.)
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
+    // Stronger type safety
+    "noImplicitAny": true
   },
   "include": [
-    "src/**/*",
-    "srv/**/*",
-    "cds-plugin.ts",
-    "example/**/*"
+    "src/**/*",          // All TypeScript source code
+    "cds-plugin.ts"      // Root bootstrap file for CAP auto-discovery
   ],
   "exclude": [
     "node_modules",
     "dist",
-    "**/*.test.ts"
+    "**/*.test.ts",      // Exclude test files
+    "example"            // Exclude local demo/example folder
   ]
 }

@@ -113,9 +113,9 @@ entity BlockchainEvent {
     @description: 'Human-readable description of the event'
         description      : String(500);
 
-    @title      : 'Block Number'
-    @description: 'Block number where the event occurred'
-        blockNumber      : Integer64;
+    @title      : 'Block Height'
+    @description: 'Block height where the event occurred'
+        blockHeight      : Integer64;
 
     @title      : 'Block Hash'
     @description: 'Block hash where the event occurred'

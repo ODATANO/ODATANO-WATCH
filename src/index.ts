@@ -3,7 +3,7 @@ import * as config from "./config";
 import * as watcher from "./watcher";
 import type { CardanoWatcherConfig } from "./config";
 
-const COMPONENT_NAME = "/cardanoWatcher";
+const COMPONENT_NAME = "/watcher";
 
 let initialized = false;
 

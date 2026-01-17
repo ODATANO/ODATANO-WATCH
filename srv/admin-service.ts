@@ -156,7 +156,7 @@ module.exports = (srv: cds.Service) => {
         return rejectInvalid('removeWatchedAddress', `Address ${address} is not being watched`, 'address');
       }
       // Remove watch entry
-      const result = await db.run(UPDATE(WatchedAddresses).set({ active: false }).where({ address }));
+      const result = await db.run(UPDATE.entity(WatchedAddresses).set({ active: false }).where({ address }));
       logger.info({ address, result }, "Removed watched address");
       return { success: true, message: `Stopped watching address ${address}` };
     });
@@ -223,7 +223,7 @@ module.exports = (srv: cds.Service) => {
         return rejectInvalid('removeWatchedTransaction', `Transaction ${txHash} is not being tracked`, 'txHash');
       }
       // Remove watch entry
-      const result = await db.run(UPDATE(TransactionSubmissions).set({ active: false }).where({ txHash }));
+      const result = await db.run(UPDATE.entity(TransactionSubmissions).set({ active: false }).where({ txHash }));
       logger.info({ txHash, result }, "Removed watched transaction");
       return { success: true, message: `Stopped tracking transaction ${txHash}` };
     });

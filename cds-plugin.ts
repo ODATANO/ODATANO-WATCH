@@ -1,18 +1,29 @@
 import cds from "@sap/cds";
-import cardanoWatcher from "./src/index";
 
-const COMPONENT_NAME = "/cardanoWatcher/plugin";
+// Require the compiled main plugin code (available after build/publish)
+const watcher = require("./dist/index.js");
 
-const isServe = (cds as any).cli?.command === "serve";
-const isBuild = (cds as any).build?.register;
+const COMPONENT_NAME = "/watch/plugin";
 
-// Only run during serve, not during build/compile
-if (isBuild && !isServe) {
+/**
+ * CAP plugin bootstrap – auto-discovered via cds-plugin.js in package root
+ * 
+ * Only initialize during runtime (serve/watch/run), not during cds build
+ */
+if ((cds as any).build) {
+  // Export nothing during build to avoid side effects
   module.exports = {};
 } else {
-  // Always initialize the plugin
-  module.exports = cardanoWatcher.initialize().catch((err: Error) => {
-    cds.log(COMPONENT_NAME).error("Failed to initialize Cardano Watcher plugin:", err);
-    throw err;
-  });
+  /**
+   * Async factory exported for CAP – called automatically on boot
+   */
+  module.exports = async () => {
+    try {
+      await watcher.default.initialize();
+      cds.log(COMPONENT_NAME).info("ODATANO Watch plugin loaded and initialized successfully");
+    } catch (err) {
+      cds.log(COMPONENT_NAME).error("Failed to initialize ODATANO Watch plugin:", err);
+      throw err;
+    }
+  };
 }
