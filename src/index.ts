@@ -30,37 +30,12 @@ export async function initialize(): Promise<void> {
     apiKeyLength: cfg.blockfrostApiKey?.length 
   });
 
-  // Check if database is already connected
-  const db = await cds.connect.to('db');
-  if (db) {
-    logger.info("Database already connected, setting up Cardano Watcher...");
-    await watcher.setup();
-    logger.info("Cardano Watcher initialized successfully");
-    initialized = true;
-    return;
-  }
-
-  // Wait for database connection
-  let initFinished: () => void;
-  const initPromise = new Promise<void>((resolve) => (initFinished = resolve));
-
-  cds.on("connect", (service: { name: string; }) => {
-    if (service.name === "db") {
-      logger.info("Database connected, setting up Cardano Watcher...");
-      
-      // Setup watcher
-      watcher.setup().then(() => {
-        logger.info("Cardano Watcher initialized successfully");
-        initialized = true;
-        initFinished();
-      }).catch((err) => {
-        logger.error("Failed to setup watcher:", err);
-        throw err;
-      });
-    }
-  });
-
-  await initPromise;
+  // Setup watcher using the standard database
+  // The database will be available via cds.db at this point
+  logger.info("Setting up Cardano Watcher...");
+  await watcher.setup();
+  logger.info("Cardano Watcher initialized successfully");
+  initialized = true;
 }
 
 /**

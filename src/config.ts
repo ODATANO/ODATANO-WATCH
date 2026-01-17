@@ -26,30 +26,61 @@ export interface CardanoWatcherConfig {
   transactionPolling?: PollingConfig;    // Check if submitted transactions are in the network
 }
 
-// Log environment variable for debugging
-console.log("[config] BLOCKFROSTKEY from env:", env.BLOCKFROSTKEY ? "SET (length: " + env.BLOCKFROSTKEY.length + ")" : "NOT SET");
-
-let configuration: CardanoWatcherConfig = {
-  network: "preview",
-  blockfrostApiKey: env.BLOCKFROSTKEY,
-  blockfrostProjectId: undefined,
-  autoStart: true,
-  maxRetries: 3,
-  retryDelay: 5000,
-  batchSize: 100,
-  enableWebhooks: false,
-  webhookEndpoint: undefined,
+/**
+ * Resolve environment variable placeholders like ${env:VAR_NAME}
+ */
+function resolveEnvPlaceholder(value: any): any {
+  if (typeof value !== 'string') return value;
   
-  // Individual polling configs with sensible defaults
-  addressPolling: {
-    enabled: true,
-    interval: 30, // Check watched addresses every 30s
-  },
-  transactionPolling: {
-    enabled: true,
-    interval: 60, // Check submitted transactions every 60s
-  },
-};
+  const match = value.match(/^\$\{env:([^}]+)\}$/);
+  if (match) {
+    const envVarName = match[1];
+    return env[envVarName];
+  }
+  
+  return value;
+}
+
+/**
+ * Load configuration from cds.env or environment variables
+ */
+function loadInitialConfig(): CardanoWatcherConfig {
+  // Try to get config from cds.env.requires.cardanoWatcher or cds.env.requires.watch
+  const cdsConfig = cds.env?.requires?.cardanoWatcher || cds.env?.requires?.watch || {};
+  
+  // Resolve apiKey from cds.env or environment variable
+  let apiKey = resolveEnvPlaceholder(cdsConfig.apiKey || cdsConfig.blockfrostApiKey) || env.BLOCKFROSTKEY;
+  
+  // Log for debugging
+  console.log("[config] BLOCKFROSTKEY from env:", env.BLOCKFROSTKEY ? "SET (length: " + env.BLOCKFROSTKEY.length + ")" : "NOT SET");
+  console.log("[config] BLOCKFROST_KEY from env:", env.BLOCKFROST_KEY ? "SET (length: " + env.BLOCKFROST_KEY.length + ")" : "NOT SET");
+  console.log("[config] CDS config:", JSON.stringify(cdsConfig, null, 2));
+  console.log("[config] Resolved apiKey:", apiKey ? "SET (length: " + apiKey.length + ")" : "NOT SET");
+  
+  return {
+    network: cdsConfig.network || "preview",
+    blockfrostApiKey: apiKey,
+    blockfrostProjectId: cdsConfig.blockfrostProjectId || undefined,
+    autoStart: cdsConfig.autoStart !== undefined ? cdsConfig.autoStart : true,
+    maxRetries: cdsConfig.maxRetries || 3,
+    retryDelay: cdsConfig.retryDelay || 5000,
+    batchSize: cdsConfig.batchSize || 100,
+    enableWebhooks: cdsConfig.enableWebhooks || false,
+    webhookEndpoint: cdsConfig.webhookEndpoint || undefined,
+    
+    // Individual polling configs with sensible defaults
+    addressPolling: {
+      enabled: cdsConfig.addressPolling?.enabled !== undefined ? cdsConfig.addressPolling.enabled : true,
+      interval: cdsConfig.addressPolling?.interval || 30,
+    },
+    transactionPolling: {
+      enabled: cdsConfig.transactionPolling?.enabled !== undefined ? cdsConfig.transactionPolling.enabled : true,
+      interval: cdsConfig.transactionPolling?.interval || 60,
+    },
+  };
+}
+
+let configuration: CardanoWatcherConfig = loadInitialConfig();
 
 /**
  * Initialize configuration with options

@@ -15,6 +15,8 @@ let isRunning = false;
 let addressPollingActive = false;
 let transactionPollingActive = false;
 
+let db: any = null; // Database service connection
+
 /**
  * Setup the watcher should be called once in initialization
  */
@@ -27,6 +29,12 @@ export async function setup(): Promise<Boolean> {
     network: cfg.network,
     apiKeyPrefix: cfg.blockfrostApiKey?.substring(0, 10)
   });
+  
+  // Use the application's standard database
+  // Plugins should use cds.db instead of requiring a separate database
+  logger.info('Connecting to standard database service');
+  db = await cds.db;
+  logger.info("Database connection established");
   
   // Initialize Blockfrost if API key is available
   if (cfg.blockfrostApiKey || cfg.blockfrostProjectId) {
@@ -226,7 +234,7 @@ async function pollWatchedAddresses(): Promise<number> {
 
   try {
     // Get all watched addresses
-    const watchedAddresses = await cds.tx(async (tx: any) => {
+    const watchedAddresses = await db.tx(async (tx: any) => {
       return tx.run(
         SELECT.from(WatchedAddresses)
           .where({ active: true })
@@ -277,7 +285,7 @@ async function processAddress(watchedAddr: WatchedAddress): Promise<number> {
       logger.info(`Found ${transactions.length} new transactions for ${watchedAddr.address}`);
       eventsDetected = transactions.length;
 
-      await cds.tx(async (tx: any) => {
+      await db.tx(async (tx: any) => {
         for (const tx_data of transactions) {
           // Store blockchain event
           await tx.run(
@@ -351,7 +359,7 @@ async function pollTransactionSubmissions(): Promise<number> {
 
   try {
     // Get active transaction submissions
-    const submissions = await cds.tx(async (tx: any) => {
+    const submissions = await db.tx(async (tx: any) => {
       return tx.run(
         SELECT.from(TransactionSubmissions)
           .where({ active: true })
@@ -394,7 +402,7 @@ async function processTransactionSubmission(submission: TransactionSubmission): 
     if (txData) {
       logger.info(`Transaction ${submission.txHash} found on chain in block ${txData.blockHeight}`);
       eventsDetected += 1;
-      await cds.tx(async (tx: any) => {
+      await db.tx(async (tx: any) => {
         // Store blockchain event
         await tx.run(
           INSERT.into(BlockchainEvent).entries({
