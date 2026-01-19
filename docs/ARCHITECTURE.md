@@ -39,7 +39,7 @@ CAP plugin that monitors Cardano blockchain via Blockfrost API. Uses two indepen
 
 ### cds-plugin.ts
 
-Entry point. Auto-loaded by CAP if `cds.env.cardanoWatcher` exists.
+Entry point. Auto-loaded by CAP if `cds.env.requires.watch` exists.
 
 ```typescript
 const isServe = (cds as any).cli?.command === "serve";
@@ -47,7 +47,7 @@ const isBuild = (cds as any).build?.register;
 
 if (isBuild && !isServe) {
   module.exports = {};
-} else if (Object.keys(cds.env.cardanoWatcher ?? {}).length) {
+} else if (Object.keys(cds.env.requires.watch ?? {}).length) {
   module.exports = cardanoWatcher.initialize();
 }
 ```

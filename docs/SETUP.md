@@ -25,10 +25,12 @@ npm run build
 ```json
 {
   "cds": {
-    "cardanoWatcher": {
-      "network": "preprod",
-      "blockfrostProjectId": "preprod_YOUR_KEY",
-      "autoStart": true
+    "requires": {
+      "watch": {
+        "network": "preprod",
+        "blockfrostApiKey": "preprod_YOUR_KEY",
+        "autoStart": true
+      }
     }
   }
 }
@@ -39,12 +41,12 @@ npm run build
 ```typescript
 interface CardanoWatcherConfig {
   network: "mainnet" | "preprod" | "preview";
-  blockfrostProjectId: string;
-  autoStart?: boolean;  // default: false
+  blockfrostApiKey?: string;
+  autoStart?: boolean;  // default: true
   
   addressPolling?: {
     enabled: boolean;   // default: true
-    interval: number;   // seconds, default: 30
+    interval: number;   // seconds, default: 60
   };
   
   transactionPolling?: {
@@ -53,18 +55,19 @@ interface CardanoWatcherConfig {
   };
   
   maxRetries?: number;    // default: 3
-  retryDelay?: number;    // ms, default: 1000
-  batchSize?: number;     // default: 50
+  retryDelay?: number;    // ms, default: 5000
 }
 ```
 
 ### Environment Variables
 
+For **plugin development only**, you can use environment variables as fallback:
+
 ```bash
-CDS_CARDANO_WATCHER_NETWORK=mainnet
-CDS_CARDANO_WATCHER_BLOCKFROST_PROJECT_ID=mainnet_abc123
-CDS_CARDANO_WATCHER_AUTO_START=true
+BLOCKFROST_KEY=mainnet_abc123
 ```
+
+For **production use**, always configure via `cds.env.requires.watch.blockfrostApiKey`
 
 ## Database Setup
 
@@ -81,24 +84,28 @@ cds deploy --dry-run > migration.sql
 
 ### API Key Management
 
-**❌ Never hardcode**:
+**❌ Never hardcode in package.json**:
 ```json
-"blockfrostProjectId": "mainnet_hardcoded_key"
+"watch": {
+  "blockfrostApiKey": "mainnet_hardcoded_key"
+}
 ```
 
-**✅ Use environment variables**:
+**✅ Use environment-based config**:
 ```json
-"blockfrostProjectId": "${CDS_CARDANO_WATCHER_BLOCKFROST_PROJECT_ID}"
+"watch": {
+  "blockfrostApiKey": "${BLOCKFROST_KEY}"
+}
 ```
 
 **✅ Kubernetes Secrets**:
 ```yaml
 env:
-  - name: CDS_CARDANO_WATCHER_BLOCKFROST_PROJECT_ID
+  - name: BLOCKFROST_KEY
     valueFrom:
       secretKeyRef:
         name: cardano-secrets
-        key: blockfrostProjectId
+        key: blockfrostKey
 ```
 
 ### Authorization
@@ -126,10 +133,11 @@ CMD ["npx", "cds", "serve"]
 
 ```bash
 docker run -p 4004:4004 \
-  -e CDS_CARDANO_WATCHER_NETWORK=mainnet \
-  -e CDS_CARDANO_WATCHER_BLOCKFROST_PROJECT_ID=mainnet_... \
+  -e BLOCKFROST_KEY=mainnet_abc123 \
   my-cap-app
 ```
+
+**Note**: The environment variable is used via config: `"blockfrostApiKey": "${BLOCKFROST_KEY}"`
 
 ### Cloud Foundry
 
@@ -138,13 +146,15 @@ applications:
   - name: cardano-watcher-app
     memory: 512M
     buildpack: nodejs_buildpack
-    env:
-      CDS_CARDANO_WATCHER_NETWORK: mainnet
 ```
 
 Bind secret service:
 ```bash
-cf create-user-provided-service cardano-config -p '{"blockfrostProjectId":"..."}'
+cf create-user-provided-service cardano-secrets -p '{"BLOCKFROST_KEY":"mainnet_abc123"}'
+cf bind-service my-app cardano-secrets
+```
+
+**Note**: Use `"blockfrostApiKey": "${BLOCKFROST_KEY}"` in your config
 cf bind-service my-app cardano-config
 ```
 
@@ -167,7 +177,7 @@ cf bind-service my-app cardano-config
 npm ls @odatano/watch
 
 # Verify config
-cds env get cardanoWatcher
+cds env get requires.watch
 
 # View logs
 cds watch
@@ -184,7 +194,7 @@ console.log(status);
 await cardanoWatcher.manualPoll();
 
 // Enable debug logs
-cds.env.log.levels = { cardanoWatcher: "debug" };
+cds.env.log.levels = { "ODATANO-WATCH": "debug", "CARDANO-WATCH": "debug" };
 ```
 
 ### API Rate Limits
@@ -212,7 +222,7 @@ jobs:
       - run: npm run build
       - run: npm test
         env:
-          CDS_CARDANO_WATCHER_BLOCKFROST_PROJECT_ID: ${{ secrets.BLOCKFROST_KEY }}
+          BLOCKFROST_KEY: ${{ secrets.BLOCKFROST_KEY }}
 ```
 
 ## Resources

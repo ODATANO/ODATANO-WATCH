@@ -1,6 +1,7 @@
 import { normalizeBackendError, BackendError } from './errors';
 import cds, { Request } from '@sap/cds';
-import logger from './logger';
+
+const logger = cds.log('ODATANO-WATCH');
 
 /** 
  * BackendRequestHandler - Provides standardized handling for backend requests 
@@ -51,7 +52,7 @@ export async function handleRequest(
     }
     
     // Unexpected errors
-    logger.error({ err }, `[Service] Unexpected error in ${context}`);
+    logger.error({ err }, `Unexpected error in ${context}`);
     return req.reject(500, `Internal error: ${err.message}`);
   }
 }

@@ -27,7 +27,7 @@ export interface AddressInfo {
   transactions?: TransactionInfo[];
 }
 
-const COMPONENT_NAME = "/cardanoWatcher/blockfrost";
+const logger = cds.log("ODATANO-WATCH");
 
 let blockfrostClient: any = null;
 
@@ -41,18 +41,18 @@ export function initializeClient(config: any): any {
 
   try {
     blockfrostClient = new BlockFrostAPI({
-      projectId: config.blockfrostProjectId || config.blockfrostApiKey,
+      projectId: config.blockfrostApiKey,
       network: config.network,
     });
 
-    cds.log(COMPONENT_NAME).info("Blockfrost client initialized", {
+    logger.debug("Blockfrost client initialized", {
       network: config.network,
-      projectId: (config.blockfrostProjectId || config.blockfrostApiKey)?.substring(0, 10) + "..."
+      projectId: config.blockfrostApiKey?.substring(0, 10) + "..."
     });
 
     return blockfrostClient;
   } catch (err) {
-    cds.log(COMPONENT_NAME).error("Failed to initialize Blockfrost client:", err);
+    logger.error("Failed to initialize Blockfrost client:", err);
     throw err;
   }
 }
@@ -65,8 +65,6 @@ export async function fetchAddressTransactions(
   fromBlock: number | null = null
 ): Promise<TransactionInfo[] | null> {
 
-  const logger = cds.log(COMPONENT_NAME);
-  
   if (!blockfrostClient) {
     return null;
   }
@@ -146,7 +144,7 @@ export async function getLatestBlock(): Promise<BlockInfo | null> {
       slot: block.slot,
     };
   } catch (err) {
-    cds.log(COMPONENT_NAME).error("Error fetching latest block:", err);
+    logger.error("Error fetching latest block:", err);
     throw err;
   }
 }
@@ -172,7 +170,7 @@ export async function getAddressInfo(address: string): Promise<AddressInfo | nul
       transactions: transactions || [],
     };
   } catch (err) {
-    cds.log(COMPONENT_NAME).error(`Error fetching address info for ${address}:`, err);
+    logger.error(`Error fetching address info for ${address}:`, err);
     throw err;
   }
 }
@@ -200,7 +198,7 @@ export async function getTransaction(hash: string): Promise<TransactionInfo | nu
     };
   } catch (err) {
     // Transaction might not be on chain yet or be in mempool
-    cds.log(COMPONENT_NAME).debug(`Transaction ${hash} not found:`, err);
+    logger.debug(`Transaction ${hash} not found:`, err);
     return null;
   }
 }

@@ -5,10 +5,9 @@ import * as cardanoWatcher from "../src/index";
 import { rejectMissing, rejectInvalid } from './utils/errors';
 import { isValidBech32Address, isValidNetwork, isTxHash } from './utils/validators';
 import { handleRequest } from './utils/backend-request-handler';
-import logger from './utils/logger';
 import type { WatchedAddress, TransactionSubmission } from '../@cds-models/CardanoWatcherAdminService';
 
-const COMPONENT_NAME = '[CardanoWatcherAdminService]';
+const logger = cds.log('ODATANO-WATCH');
 
 // Initialize Cardano Watcher on module load
 cardanoWatcher.initialize().catch((err) => {
@@ -20,7 +19,7 @@ cardanoWatcher.initialize().catch((err) => {
  * Manages blockchain address monitoring and transaction tracking
  */
 module.exports = (srv: cds.Service) => {
-  logger.info(`${COMPONENT_NAME} Module loaded - registering handlers`);
+  logger.info("Cardano Watcher Admin Service Module loaded - registering handlers");
   
   const {
     WatchedAddresses,
@@ -35,7 +34,7 @@ module.exports = (srv: cds.Service) => {
    * Start Watcher - Start all polling paths
    */
   srv.on("startWatcher", async (req: Request) => {
-    logger.debug(`${COMPONENT_NAME} startWatcher action called`);
+    logger.debug("startWatcher action called");
     
     return handleRequest(req, async () => {
       await watcher.start();
@@ -48,7 +47,7 @@ module.exports = (srv: cds.Service) => {
    * Stop Watcher - Stop all polling paths
    */
   srv.on("stopWatcher", async (req: Request) => {
-    logger.debug(`${COMPONENT_NAME} stopWatcher action called`);
+    logger.debug("stopWatcher action called");
     
     return handleRequest(req, async () => {
       await watcher.stop();
@@ -61,7 +60,7 @@ module.exports = (srv: cds.Service) => {
    * Get Watcher Status
    */
   srv.on("getWatcherStatus", async (req: Request) => {
-    logger.debug(`${COMPONENT_NAME} getWatcherStatus action called`);
+    logger.debug("Admin Service getWatcherStatus action called");
     
     return handleRequest(req, async (db: any) => {
       const status = watcher.getStatus();
@@ -104,7 +103,7 @@ module.exports = (srv: cds.Service) => {
    * Adds a new Cardano address to monitor for blockchain activity
    */
   srv.on("addWatchedAddress", async (req: Request) => {
-    logger.debug(`${COMPONENT_NAME} addWatchedAddress action called`);
+    logger.debug("addWatchedAddress action called");
     const { address, description, network } = req.data;
     
     // Validate inputs
@@ -141,7 +140,7 @@ module.exports = (srv: cds.Service) => {
   });
 
   srv.on("removeWatchedAddress", async (req: Request) => {
-    logger.debug(`${COMPONENT_NAME} removeWatchedAddress action called`);
+    logger.debug("removeWatchedAddress action called");
     const { address } = req.data;
 
     // Validate inputs
@@ -171,8 +170,9 @@ module.exports = (srv: cds.Service) => {
    * Submits a transaction hash for status tracking
    */
   srv.on("addWatchedTransaction", async (req: Request) => {
-    logger.debug(`${COMPONENT_NAME} TrackSubmittedTransaction action called`);
     const { txHash, description, network } = req.data;
+
+    logger.info({ txHash }, "addWatchedTransaction action called");
     
     // Validate inputs
     if (!txHash) return rejectMissing('TrackSubmittedTransaction', 'txHash');
@@ -190,7 +190,7 @@ module.exports = (srv: cds.Service) => {
         return rejectInvalid('TrackSubmittedTransaction', `Transaction ${txHash} is already being tracked`, 'txHash');
       }
       
-      // Create new submission entry
+      // create new submission entry
       const submissionEntry: TransactionSubmission = {
         txHash,
         description: description || null,
@@ -202,14 +202,12 @@ module.exports = (srv: cds.Service) => {
 
       await db.run(INSERT.into(TransactionSubmissions).entries(submissionEntry));
       
-      logger.info({ txHash }, "TrackSubmittedTransaction action called");
-      
       return submissionEntry;
     });
   });
 
   srv.on("removeWatchedTransaction", async (req: Request) => {
-    logger.debug(`${COMPONENT_NAME} removeWatchedTransaction action called`);
+    logger.debug("removeWatchedTransaction action called");
     const { txHash } = req.data;
     // Validate inputs
     if (!txHash) return rejectMissing('removeWatchedTransaction', 'txHash');
@@ -229,6 +227,6 @@ module.exports = (srv: cds.Service) => {
     });
   });
 
-  logger.info(`${COMPONENT_NAME} All handlers registered`);
+  logger.debug("Admin Service All handlers registered");
 };
 

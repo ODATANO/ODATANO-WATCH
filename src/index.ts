@@ -3,8 +3,6 @@ import * as config from "./config";
 import * as watcher from "./watcher";
 import type { CardanoWatcherConfig } from "./config";
 
-const COMPONENT_NAME = "/watcher";
-
 let initialized = false;
 
 /**
@@ -15,24 +13,25 @@ export async function initialize(): Promise<void> {
     return;
   }
 
-  const logger = cds.log(COMPONENT_NAME);
+  const logger = cds.log('ODATANO-WATCH');
+
   logger.info("Initializing Cardano Watcher plugin...");
 
-  // Initialize config from cds.env.cardanoWatcher (merge with defaults)
-  const envConfig = cds.env.cardanoWatcher || {};
-  logger.info("Config from cds.env:", envConfig);
+  // Initialize config from cds.env.requires.watch (merge with defaults)
+  const envConfig = cds.env.requires?.watch || {};
+  logger.debug("Config from cds.env.requires.watch:", envConfig);
   config.initialize(envConfig);
   
   const cfg = config.get();
-  logger.info("Final config:", { 
-    network: cfg.network, 
-    hasApiKey: !!cfg.blockfrostApiKey,
-    apiKeyLength: cfg.blockfrostApiKey?.length 
-  });
+  logger.debug("Final config:", { 
+      network: cfg.network, 
+      hasApiKey: !!cfg.blockfrostApiKey,
+      apiKeyLength: cfg.blockfrostApiKey?.length 
+    });
 
   // Setup watcher using the standard database
   // The database will be available via cds.db at this point
-  logger.info("Setting up Cardano Watcher...");
+  logger.debug("Setting up Cardano Watcher...");
   await watcher.setup();
   logger.info("Cardano Watcher initialized successfully");
   initialized = true;

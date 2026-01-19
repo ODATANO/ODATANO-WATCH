@@ -38,7 +38,7 @@ Add the configuration to your CAP project's `package.json`:
 {
   "cds": {
     "requires": {
-      "cardanoWatcher": {
+      "watch": {
         "network": "preview",
         "blockfrostApiKey": "previewABC123...",
         "autoStart": true,
@@ -341,7 +341,6 @@ await cardanoWatcher.stopTransactionPolling();
 │       ├── backend-request-handler.ts
 │       ├── error-codes.ts
 │       ├── errors.ts
-│       ├── logger.ts
 │       └── validators.ts
 ├── db/                       # CDS Data Model
 │   └── schema.cds           # Entity Definitions
@@ -387,13 +386,9 @@ npm run format      # Prettier code formatting
 interface CardanoWatcherConfig {
   network?: "mainnet" | "preview" | "preprod";
   blockfrostApiKey?: string;
-  blockfrostProjectId?: string;
   autoStart?: boolean;
   maxRetries?: number;
   retryDelay?: number;
-  batchSize?: number;
-  enableWebhooks?: boolean;
-  webhookEndpoint?: string;
   
   addressPolling?: {
     enabled: boolean;

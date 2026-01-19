@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-01-19
+
+### Changed
+- Migrated to native CDS logger (`cds.log()`) instead of custom logger implementation
+- Simplified API key configuration: `blockfrostApiKey` in config, `BLOCKFROST_KEY` env variable as fallback for development
+- Updated all documentation (README, QUICKSTART, SETUP, ARCHITECTURE) to reflect new configuration approach
+
+### Removed
+- Custom `logger.ts` utility (replaced by CDS logger)
+- Unused configuration options: `blockfrostProjectId`, `batchSize`, `enableWebhooks`, `webhookEndpoint`
+
+### Fixed
+- **BREAKING**: Config key inconsistency - now consistently uses `cds.env.requires.watch` (previously mixed usage)
+- Important: Configuration priority - CDS config always takes precedence over environment variables
+- Consistent logger naming: unified to `ODATANO-WATCH`
+
 ## [0.1.0] - 2026-01-17
 
 ### Added

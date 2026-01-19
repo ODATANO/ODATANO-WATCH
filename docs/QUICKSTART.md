@@ -17,10 +17,12 @@ Add to `package.json`:
 ```json
 {
   "cds": {
-    "cardanoWatcher": {
-      "network": "preprod",
-      "blockfrostProjectId": "preprod_YOUR_KEY",
-      "autoStart": true
+    "requires": {
+      "watch": {
+        "network": "preview",
+        "blockfrostApiKey": "preview_your_api_key_here",
+        "autoStart": true
+      }
     }
   }
 }
@@ -56,9 +58,9 @@ cds watch
 
 You should see:
 ```
-[cardanoWatcher] - Plugin initialized
-[cardanoWatcher/watcher] - Address polling started (30s)
-[cardanoWatcher/watcher] - Transaction polling started (60s)
+[ODATANO-WATCH] - Plugin initialized
+[ODATANO-WATCH] - Address polling started (60s)
+[ODATANO-WATCH] - Transaction polling started (60s)
 ```
 
 ## Watch Address

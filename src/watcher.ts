@@ -5,9 +5,7 @@ import * as config from "./config";
 import * as blockfrost from "./blockfrost";
 import type { TransactionInfo } from "./blockfrost";
 import { BlockchainEvent, TransactionSubmission ,TransactionSubmissions, WatchedAddress, WatchedAddresses } from "../@cds-models/CardanoWatcherAdminService";
-
-const COMPONENT_NAME = "/cardanoWatcher/watcher";
-
+const logger = cds.log(`ODATANO-WATCH`);
 let addressInterval: NodeJS.Timeout | null = null;
 let transactionInterval: NodeJS.Timeout | null = null;
 
@@ -21,27 +19,25 @@ let db: any = null; // Database service connection
  * Setup the watcher should be called once in initialization
  */
 export async function setup(): Promise<Boolean> {
-  const logger = cds.log(COMPONENT_NAME);
   const cfg = config.get();
   
-  logger.info("Watcher setup - Config:", {
-    hasApiKey: !!(cfg.blockfrostApiKey || cfg.blockfrostProjectId),
+  logger.debug("Watcher setup - Config:", {
+    hasApiKey: !!cfg.blockfrostApiKey,
     network: cfg.network,
     apiKeyPrefix: cfg.blockfrostApiKey?.substring(0, 10)
   });
   
   // Use the application's standard database
-  // Plugins should use cds.db instead of requiring a separate database
-  logger.info('Connecting to standard database service');
-  db = await cds.db;
-  logger.info("Database connection established");
+  logger.debug('Connecting to standard database service');
+  db = cds.db;
+  logger.debug("Database connection established");
   
   // Initialize Blockfrost if API key is available
-  if (cfg.blockfrostApiKey || cfg.blockfrostProjectId) {
-    logger.info("Initializing Blockfrost client...");
+  if (cfg.blockfrostApiKey) {
+    logger.debug("Initializing Blockfrost client...");
     try {
       blockfrost.initializeClient(cfg);
-      logger.info("Blockfrost available:", blockfrost.isAvailable());
+      logger.debug("Blockfrost available:", blockfrost.isAvailable());
     } catch (err) {
       logger.error("Failed to initialize Blockfrost:", err);
       return false;
@@ -68,11 +64,10 @@ export async function setup(): Promise<Boolean> {
  */
 export async function start(): Promise<void> {
   if (isRunning) {
-    cds.log(COMPONENT_NAME).warn("Watcher is already running");
+    logger.warn("Watcher is already running");
     return;
   }
 
-  const logger = cds.log(COMPONENT_NAME);
   const cfg = config.get();
 
   logger.info(`Starting Cardano Watcher on ${cfg.network} network`);
@@ -98,8 +93,7 @@ export async function stop(): Promise<void> {
     return;
   }
 
-  const logger = cds.log(COMPONENT_NAME);
-  logger.info("Stopping Cardano Watcher...");
+  logger.debug("Stopping Cardano Watcher...");
 
   await stopAddressPolling();
   await stopTransactionPolling();
@@ -121,11 +115,10 @@ export async function startAddressPolling(): Promise<void> {
     return;
   }
 
-  const logger = cds.log(COMPONENT_NAME);
   const cfg = config.get();
   const interval = cfg.addressPolling?.interval || 30;
 
-  logger.info(`Starting address polling (interval: ${interval}s)`);
+  logger.debug(`Starting address polling (interval: ${interval}s)`);
   addressPollingActive = true;
 
   // Start interval
@@ -153,8 +146,7 @@ export async function stopAddressPolling(): Promise<void> {
     return;
   }
 
-  const logger = cds.log(COMPONENT_NAME);
-  logger.info("Stopping address polling...");
+  logger.debug("Stopping address polling...");
 
   if (addressInterval) {
     clearInterval(addressInterval);
@@ -176,11 +168,10 @@ export async function startTransactionPolling(): Promise<void> {
     return;
   }
 
-  const logger = cds.log(COMPONENT_NAME);
   const cfg = config.get();
   const interval = cfg.transactionPolling?.interval || 60;
 
-  logger.info(`Starting transaction polling (interval: ${interval}s)`);
+  logger.debug(`Starting transaction polling (interval: ${interval}s)`);
   transactionPollingActive = true;
 
   // Start interval
@@ -208,8 +199,7 @@ export async function stopTransactionPolling(): Promise<void> {
     return;
   }
 
-  const logger = cds.log(COMPONENT_NAME);
-  logger.info("Stopping transaction polling...");
+  logger.debug("Stopping transaction polling...");
 
   if (transactionInterval) {
     clearInterval(transactionInterval);
@@ -229,7 +219,6 @@ export async function stopTransactionPolling(): Promise<void> {
  * @returns Number of events detected
  */
 async function pollWatchedAddresses(): Promise<number> {
-  const logger = cds.log(COMPONENT_NAME);
   let eventsDetected = 0;
 
   try {
@@ -267,7 +256,6 @@ async function pollWatchedAddresses(): Promise<number> {
  * @returns Number of events detected
  */
 async function processAddress(watchedAddr: WatchedAddress): Promise<number> {
-  const logger = cds.log(COMPONENT_NAME);
   const cfg = config.get();
   let eventsDetected = 0;
 
@@ -333,8 +321,7 @@ async function fetchAddressTransactions(
   address: string,
   fromBlock: number | null
 ): Promise<TransactionInfo[] | null> {
-  const logger = cds.log(COMPONENT_NAME);
-
+  
   // Try Blockfrost first
   if (blockfrost.isAvailable()) {
     try {
@@ -354,7 +341,6 @@ async function fetchAddressTransactions(
  * @returns Number of events detected
  */
 async function pollTransactionSubmissions(): Promise<number> {
-  const logger = cds.log(COMPONENT_NAME);
   let eventsDetected = 0;
 
   try {
@@ -388,7 +374,6 @@ async function pollTransactionSubmissions(): Promise<number> {
 }
 
 async function processTransactionSubmission(submission: TransactionSubmission): Promise<number> {
-  const logger = cds.log(COMPONENT_NAME);
   const cfg = config.get();
   let eventsDetected = 0;
   try {

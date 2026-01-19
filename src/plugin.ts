@@ -1,13 +1,12 @@
 import cds from '@sap/cds';
 
-const LOG = cds.log('@odatano/watch');
-const DEBUG = cds.debug('@odatano/watch');
+const logger = cds.log('ODATANO-WATCH');
 
 let initialized = false;
 
 /**
  * CAP Plugin registration for @odatano/watch
- * This is executed when the plugin is loaded (not at 'served' event)
+ * This is executed when the plugin is loaded
  */
 
 // Register watcher service kind
@@ -24,7 +23,7 @@ if (!cds.env.requires.kinds) {
   impl: '@odatano/watch',
 };
 
-DEBUG?.('Plugin registered: cardano-watcher service kind');
+logger.debug('Plugin registered');
 
 /**
  * Initialize the watcher when services are served
@@ -32,7 +31,7 @@ DEBUG?.('Plugin registered: cardano-watcher service kind');
 cds.on('served', async () => {
   if (initialized) return;
   
-  DEBUG?.('Plugin activation: cds.on("served") triggered');
+  logger.debug('Plugin activation triggered');
   
   try {
     // Import the watcher module
@@ -41,12 +40,11 @@ cds.on('served', async () => {
     // Initialize the watcher with the application's database
     await watcher.initialize();
     
-    LOG.info('ODATANO Watch plugin initialized successfully');
+    logger.info('Plugin initialized successfully');
     initialized = true;
   } catch (err) {
-    LOG.error('Failed to initialize ODATANO Watch plugin:', err);
-    // Don't throw - plugin failure shouldn't crash the app
-    LOG.warn('Cardano Watcher functionality will not be available');
+     // Don't throw a erro, just log it - plugin failure shouldn't crash the main app
+    logger.error('Failed to initialize plugin:', err);
   }
 });
 
@@ -57,12 +55,12 @@ cds.on('shutdown', async () => {
   if (!initialized) return;
   
   try {
-    LOG.info('Shutting down Cardano Watcher...');
+    logger.debug('Shutting down...');
     const watcher = await import('./index.js');
     await watcher.stop();
-    LOG.info('Cardano Watcher stopped');
+    logger.info('stopped');
   } catch (err) {
-    LOG.error('Error during shutdown:', err);
+    logger.error('Error during shutdown:', err);
   }
 });
 

@@ -2,80 +2,57 @@ import cds from "@sap/cds";
 import { config as loadEnv } from "dotenv";
 import { env } from "process";
 
-// Load .env file
-loadEnv();
+// Load .env file if present
+// This allows environment variables to be set from a .env file during development and testing
+// because cds.env loads .env files after this module is loaded.
+loadEnv({ quiet: true });
 
 export interface PollingConfig {
   enabled: boolean;
   interval: number; // in seconds
 }
 
+const logger = cds.log("ODATANO-WATCH");
+
 export interface CardanoWatcherConfig {
   network?: "mainnet" | "preview" | "preprod";
   blockfrostApiKey?: string;
-  blockfrostProjectId?: string;
   autoStart?: boolean;
   maxRetries?: number;
   retryDelay?: number;
-  batchSize?: number;
-  enableWebhooks?: boolean;
-  webhookEndpoint?: string;
-  
   // Individual polling configurations
   addressPolling?: PollingConfig;        // Monitor watched addresses for new transactions
   transactionPolling?: PollingConfig;    // Check if submitted transactions are in the network
 }
 
 /**
- * Resolve environment variable placeholders like ${env:VAR_NAME}
- */
-function resolveEnvPlaceholder(value: any): any {
-  if (typeof value !== 'string') return value;
-  
-  const match = value.match(/^\$\{env:([^}]+)\}$/);
-  if (match) {
-    const envVarName = match[1];
-    return env[envVarName];
-  }
-  
-  return value;
-}
-
-/**
  * Load configuration from cds.env or environment variables
  */
 function loadInitialConfig(): CardanoWatcherConfig {
-  // Try to get config from cds.env.requires.cardanoWatcher or cds.env.requires.watch
-  const cdsConfig = cds.env?.requires?.cardanoWatcher || cds.env?.requires?.watch || {};
-  
-  // Resolve apiKey from cds.env or environment variable
-  let apiKey = resolveEnvPlaceholder(cdsConfig.apiKey || cdsConfig.blockfrostApiKey) || env.BLOCKFROSTKEY;
-  
-  // Log for debugging
-  console.log("[config] BLOCKFROSTKEY from env:", env.BLOCKFROSTKEY ? "SET (length: " + env.BLOCKFROSTKEY.length + ")" : "NOT SET");
-  console.log("[config] BLOCKFROST_KEY from env:", env.BLOCKFROST_KEY ? "SET (length: " + env.BLOCKFROST_KEY.length + ")" : "NOT SET");
-  console.log("[config] CDS config:", JSON.stringify(cdsConfig, null, 2));
-  console.log("[config] Resolved apiKey:", apiKey ? "SET (length: " + apiKey.length + ")" : "NOT SET");
+  // Try to get config from cds.env.requires.watch
+  const cdsConfig = cds.env?.requires?.watch;
+
+  if (!cdsConfig) {
+    logger.debug("No cds.env.requires.watch configuration found, falling back to environment variables");
+  }
+  // Resolve apiKey: prefer CDS config, fallback to env variable (for plugin development only)
+  let apiKey = cdsConfig?.blockfrostApiKey ?? env.BLOCKFROST_KEY;
   
   return {
-    network: cdsConfig.network || "preview",
+    network: cdsConfig?.network ?? "preview",
     blockfrostApiKey: apiKey,
-    blockfrostProjectId: cdsConfig.blockfrostProjectId || undefined,
-    autoStart: cdsConfig.autoStart !== undefined ? cdsConfig.autoStart : true,
-    maxRetries: cdsConfig.maxRetries || 3,
-    retryDelay: cdsConfig.retryDelay || 5000,
-    batchSize: cdsConfig.batchSize || 100,
-    enableWebhooks: cdsConfig.enableWebhooks || false,
-    webhookEndpoint: cdsConfig.webhookEndpoint || undefined,
+    autoStart: cdsConfig?.autoStart ?? true,
+    maxRetries: cdsConfig?.maxRetries ?? 3,
+    retryDelay: cdsConfig?.retryDelay ?? 5000,
     
     // Individual polling configs with sensible defaults
     addressPolling: {
-      enabled: cdsConfig.addressPolling?.enabled !== undefined ? cdsConfig.addressPolling.enabled : true,
-      interval: cdsConfig.addressPolling?.interval || 30,
+      enabled: cdsConfig?.addressPolling?.enabled !== undefined ? cdsConfig.addressPolling.enabled : true,
+      interval: cdsConfig?.addressPolling?.interval ?? 60,
     },
     transactionPolling: {
-      enabled: cdsConfig.transactionPolling?.enabled !== undefined ? cdsConfig.transactionPolling.enabled : true,
-      interval: cdsConfig.transactionPolling?.interval || 60,
+      enabled: cdsConfig?.transactionPolling?.enabled !== undefined ? cdsConfig.transactionPolling.enabled : true,
+      interval: cdsConfig?.transactionPolling?.interval ?? 60,
     },
   };
 }
@@ -101,14 +78,14 @@ export function initialize(options: CardanoWatcherConfig = {}): void {
  */
 function validateConfiguration(): void {
   const validNetworks = ["mainnet", "preview", "preprod"];
-  
+  logger.debug(`Validating configuration for network: ${configuration.network}`);
   if (!validNetworks.includes(configuration.network!)) {
     throw new Error(`Invalid network: ${configuration.network}. Must be one of: ${validNetworks.join(", ")}`);
   }
 
-  if (!configuration.blockfrostApiKey && !configuration.blockfrostProjectId) {
-    cds.log("/cardanoWatcher/config").warn(
-      "No Blockfrost API key configured. Set BLOCKFROSTKEY environment variable or configure via cds.env.cardanoWatcher"
+  if (!configuration.blockfrostApiKey) {
+    logger.warn(
+      "No Blockfrost API key configured. Set blockfrostApiKey in cds.env.requires.watch configuration"
     );
   }
 }
