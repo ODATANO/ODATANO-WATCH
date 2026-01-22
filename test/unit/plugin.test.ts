@@ -11,14 +11,14 @@ const mockLogger = {
 };
 
 // Track event handlers
-const eventHandlers: Map<string, Function[]> = new Map();
+const eventHandlers: Map<string, Array<(...args: unknown[]) => void>> = new Map();
 
 const mockCds = {
   log: jest.fn(() => mockLogger),
   env: {
     requires: {},
   },
-  on: jest.fn((event: string, handler: Function) => {
+  on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
     if (!eventHandlers.has(event)) {
       eventHandlers.set(event, []);
     }

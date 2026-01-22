@@ -1,5 +1,5 @@
 import { normalizeBackendError, BackendError } from './errors';
-import cds, { Request } from '@sap/cds';
+import cds, { Request, Service } from '@sap/cds';
 
 const logger = cds.log('ODATANO-WATCH');
 
@@ -19,7 +19,7 @@ export async function handleBackendRequest<T>(
 ): Promise<T> {
   try {
     return await fn();
-  } catch (err: any) {
+  } catch (err: unknown) {
     throw normalizeBackendError(err, backendName);
   }
 }
@@ -28,18 +28,18 @@ export async function handleBackendRequest<T>(
  * General request handler for Services
  * @param req - The incoming request 
  * @param handler - The async function containing business logic
- * @returns {Promise<any>} The result of the handler or a mapped error response
+ * @returns {Promise<unknown>} The result of the handler or a mapped error response
  */
 export async function handleRequest(
   req: Request,
-  handler: (db: any) => Promise<any>
-): Promise<any> {
+  handler: (db: Service) => Promise<unknown>
+): Promise<unknown> {
   const context = req.target?.name || req.event;
   const db = cds.tx(req);
   
   try {
     return await handler(db);
-  } catch (err: any) {
+  } catch (err: unknown) {
     logger.error({ err }, `[Service] ${context} error`);
     
     // Map BackendError to CDS request error
@@ -53,6 +53,6 @@ export async function handleRequest(
     
     // Unexpected errors
     logger.error({ err }, `Unexpected error in ${context}`);
-    return req.reject(500, `Internal error: ${err.message}`);
+    return req.reject(500, `Internal error: ${(err as Error).message || 'Unknown error'}`);
   }
 }

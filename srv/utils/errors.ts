@@ -96,7 +96,7 @@ export class BackendInitError extends BackendError {
  * 6. Unknown/network errors → 503
  */
 export function normalizeBackendError(
-  err: any,
+  err: unknown,
   backendName?: string,
 ): BackendError {
   // Already normalized
@@ -104,8 +104,10 @@ export function normalizeBackendError(
     return err;
   }
 
-  const message = err.message || 'Unknown error';
-  const statusCode = err.response?.status || err.status || err.statusCode;
+  const message = (err as Error).message || 'Unknown error';
+  const statusCode = (err as { response?: { status?: number }; status?: number; statusCode?: number }).response?.status || 
+                     (err as { status?: number }).status || 
+                     (err as { statusCode?: number }).statusCode;
 
   // Rate limit detection
   if (
@@ -121,12 +123,12 @@ export function normalizeBackendError(
   }
 
   // Server errors → Provider Unavailable (retry-able)
-  if (statusCode >= 500 && statusCode < 600) {
+  if (statusCode && statusCode >= 500 && statusCode < 600) {
     return new ProviderUnavailableError(message, backendName);
   }
 
   // Client errors (4xx) → depends on message
-  if (statusCode >= 400 && statusCode < 500) {
+  if (statusCode && statusCode >= 400 && statusCode < 500) {
     if (/not found/i.test(message)) {
       return new NotFoundError(message, backendName);
     }
@@ -136,8 +138,8 @@ export function normalizeBackendError(
   // Network/timeout errors → Provider Unavailable
   if (
     /timeout|network|econnrefused|enotfound/i.test(message) ||
-    err.code === 'ECONNREFUSED' ||
-    err.code === 'ETIMEDOUT'
+    (err as { code?: string }).code === 'ECONNREFUSED' ||
+    (err as { code?: string }).code === 'ETIMEDOUT'
   ) {
     return new ProviderUnavailableError(message, backendName);
   }

@@ -1,10 +1,11 @@
-import cds from "@sap/cds";
+import cds, { Service } from "@sap/cds";
 const { SELECT, INSERT, UPDATE } = cds.ql;
 import { randomUUID } from "crypto";
 import * as config from "./config";
 import * as blockfrost from "./blockfrost";
 import type { TransactionInfo } from "./blockfrost";
 import { BlockchainEvent, TransactionSubmission ,TransactionSubmissions, WatchedAddress, WatchedAddresses } from "../@cds-models/CardanoWatcherAdminService";
+
 const logger = cds.log(`ODATANO-WATCH`);
 let addressInterval: NodeJS.Timeout | null = null;
 let transactionInterval: NodeJS.Timeout | null = null;
@@ -229,7 +230,7 @@ async function pollWatchedAddresses(): Promise<number> {
 
   try {
     // Get all watched addresses
-    const watchedAddresses = await db.tx(async (tx: any) => {
+    const watchedAddresses = await db.tx(async (tx: Service) => {
       return tx.run(
         SELECT.from(WatchedAddresses)
           .where({ active: true })
@@ -279,7 +280,7 @@ async function processAddress(watchedAddr: WatchedAddress): Promise<number> {
       logger.info(`Found ${transactions.length} new transactions for ${watchedAddr.address}`);
       eventsDetected = transactions.length;
 
-      await db.tx(async (tx: any) => {
+      await db.tx(async (tx: Service) => {
         // Insert all blockchain events
         for (const tx_data of transactions) {
           await tx.run(
@@ -308,7 +309,7 @@ async function processAddress(watchedAddr: WatchedAddress): Promise<number> {
 
       // Emit event for other parts of the application
       try {
-        await (cds as any).emit("cardano.newTransactions", {
+        await (cds as typeof cds & { emit: (event: string, data: unknown) => Promise<void> }).emit("cardano.newTransactions", {
           address: watchedAddr.address,
           count: transactions.length,
           transactions: transactions.map(t => t.txHash),
@@ -355,7 +356,7 @@ async function pollTransactionSubmissions(): Promise<number> {
 
   try {
     // Get active transaction submissions
-    const submissions = await db.tx(async (tx: any) => {
+    const submissions = await db.tx(async (tx: Service) => {
       return tx.run(
         SELECT.from(TransactionSubmissions)
           .where({ active: true })
@@ -397,7 +398,7 @@ async function processTransactionSubmission(submission: TransactionSubmission): 
     if (txData) {
       logger.info(`Transaction ${submission.txHash} found on chain in block ${txData.blockHeight}`);
       eventsDetected += 1;
-      await db.tx(async (tx: any) => {
+      await db.tx(async (tx: Service) => {
         // Store blockchain event
         await tx.run(
           INSERT.into(BlockchainEvent).entries({

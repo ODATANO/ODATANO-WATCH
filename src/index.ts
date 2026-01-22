@@ -109,8 +109,8 @@ export interface ContractEvent {
   contractAddress: string;
   eventType: string;
   scriptHash: string;
-  datum?: any;
-  redeemer?: any;
+  datum?: unknown;
+  redeemer?: unknown;
 }
 
 // Default export

@@ -1,4 +1,4 @@
-import cds, { Request } from "@sap/cds";
+import cds, { Request, Service } from "@sap/cds";
 const { SELECT, INSERT, UPDATE } = cds.ql;
 import * as watcher from "../src/watcher";
 import { initialize as initializeWatcher } from "../src/index";
@@ -62,7 +62,7 @@ module.exports = (srv: cds.Service) => {
   srv.on("getWatcherStatus", async (req: Request) => {
     logger.debug("Admin Service getWatcherStatus action called");
     
-    return handleRequest(req, async (db: any) => {
+    return handleRequest(req, async (db: Service) => {
       const status = watcher.getStatus();
       
       // Count active watches
@@ -115,7 +115,7 @@ module.exports = (srv: cds.Service) => {
       return rejectInvalid('addWatchedAddress', 'Invalid network (must be mainnet, preview, or preprod)', 'network');
     }
 
-    return handleRequest(req, async (db: any) => {
+    return handleRequest(req, async (db: Service) => {
       // check if already exists / being watched
       const existing = await db.run(SELECT.one.from(WatchedAddresses).where({ address }));
       if (existing) {
@@ -148,7 +148,7 @@ module.exports = (srv: cds.Service) => {
     if (!isValidBech32Address(address)) {
       return rejectInvalid('removeWatchedAddress', 'Invalid Bech32 address format', 'address');
     } 
-    return handleRequest(req, async (db: any) => {
+    return handleRequest(req, async (db: Service) => {
       // Check if exists
       const existing = await db.run(SELECT.one.from(WatchedAddresses).where({ address }));
       if (!existing) {
@@ -183,7 +183,7 @@ module.exports = (srv: cds.Service) => {
       return rejectInvalid('TrackSubmittedTransaction', 'Invalid network', 'network');
     }
 
-    return handleRequest(req, async (db: any) => {
+    return handleRequest(req, async (db: Service) => {
       // Check if already exists
       const existing = await db.run(SELECT.one.from(TransactionSubmissions).where({ txHash }));
       if (existing) {
@@ -214,7 +214,7 @@ module.exports = (srv: cds.Service) => {
     if (!isTxHash(txHash)) {
       return rejectInvalid('removeWatchedTransaction', 'Invalid transaction hash format', 'txHash');
     }
-    return handleRequest(req, async (db: any) => {
+    return handleRequest(req, async (db: Service) => {
       // Check if exists
       const existing = await db.run(SELECT.one.from(TransactionSubmissions).where({ txHash }));
       if (!existing) {

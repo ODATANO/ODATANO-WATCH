@@ -2,6 +2,11 @@ import cds from "@sap/cds";
 import { BlockFrostAPI } from "@blockfrost/blockfrost-js";
 import { handleBackendRequest } from "../srv/utils/backend-request-handler";
 
+interface BlockfrostAmount {
+  unit: string;
+  quantity: string;
+}
+
 export interface TransactionInfo {
   txHash: string;
   blockHash: string;
@@ -34,15 +39,15 @@ let blockfrostClient: BlockFrostAPI | null = null;
 /**
  * Initialize Blockfrost client
  */
-export function initializeClient(config: any): any {
+export function initializeClient(config: { blockfrostApiKey?: string; network?: string }): BlockFrostAPI {
   if (blockfrostClient) {
     return blockfrostClient;
   }
 
   try {
     blockfrostClient = new BlockFrostAPI({
-      projectId: config.blockfrostApiKey,
-      network: config.network,
+      projectId: config.blockfrostApiKey!,
+      network: config.network as 'mainnet' | 'preprod' | 'preview',
     });
 
     logger.debug("Blockfrost client initialized", {
@@ -101,7 +106,7 @@ export async function fetchAddressTransactions(
         }
 
         const amount = txUtxos.outputs[0]?.amount
-          ? parseFloat(txUtxos.outputs[0].amount.find((a: any) => a.unit === "lovelace")?.quantity || "0") / 1000000
+          ? parseFloat(txUtxos.outputs[0].amount.find((a: BlockfrostAmount) => a.unit === "lovelace")?.quantity || "0") / 1000000
           : 0;
 
         const confirmations = latestBlockHeight - txDetails.block_height;
@@ -159,7 +164,7 @@ export async function getAddressInfo(address: string): Promise<AddressInfo | nul
 
     return {
       address: info.address,
-      balance: parseFloat(info.amount.find((a: any) => a.unit === "lovelace")?.quantity || "0") / 1000000,
+      balance: parseFloat(info.amount.find((a: BlockfrostAmount) => a.unit === "lovelace")?.quantity || "0") / 1000000,
       stakeAddress: info.stake_address,
       type: info.type,
       transactions: transactions || [],
@@ -184,7 +189,7 @@ export async function getTransaction(hash: string): Promise<TransactionInfo | nu
       txHash: tx.hash,
       blockHash: tx.block,
       blockHeight: tx.block_height,
-      amount: parseFloat(tx.output_amount.find((a: any) => a.unit === "lovelace")?.quantity || "0") / 1000000,
+      amount: parseFloat(tx.output_amount.find((a: BlockfrostAmount) => a.unit === "lovelace")?.quantity || "0") / 1000000,
       fee: parseFloat(tx.fees) / 1000000,
       confirmations,
       lastSeen: tx.block_time,

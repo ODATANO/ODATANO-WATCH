@@ -11,15 +11,15 @@ let initialized = false;
 
 // Register watcher service kind
 if (!cds.env.requires) {
-  (cds.env as any).requires = {};
+  (cds.env as { requires?: Record<string, unknown> }).requires = {};
 }
 
 if (!cds.env.requires.kinds) {
-  (cds.env.requires as any).kinds = {};
+  (cds.env.requires as { kinds?: Record<string, unknown> }).kinds = {};
 }
 
 // Register cardano-watcher service kind
-(cds.env.requires as any).kinds['cardano-watcher'] = {
+(cds.env.requires as { kinds?: Record<string, unknown> }).kinds!['cardano-watcher'] = {
   impl: '@odatano/watch',
 };
 
