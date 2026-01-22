@@ -1,7 +1,7 @@
 import cds, { Request } from "@sap/cds";
 const { SELECT, INSERT, UPDATE } = cds.ql;
 import * as watcher from "../src/watcher";
-import * as cardanoWatcher from "../src/index";
+import { initialize as initializeWatcher } from "../src/index";
 import { rejectMissing, rejectInvalid } from './utils/errors';
 import { isValidBech32Address, isValidNetwork, isTxHash } from './utils/validators';
 import { handleRequest } from './utils/backend-request-handler';
@@ -10,7 +10,7 @@ import type { WatchedAddress, TransactionSubmission } from '../@cds-models/Carda
 const logger = cds.log('ODATANO-WATCH');
 
 // Initialize Cardano Watcher on module load
-cardanoWatcher.initialize().catch((err) => {
+initializeWatcher().catch((err: Error) => {
   logger.error("Failed to initialize Cardano Watcher:", err);
 });
 

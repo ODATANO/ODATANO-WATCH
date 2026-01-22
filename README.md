@@ -4,6 +4,8 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
 [![CAP](https://img.shields.io/badge/SAP%20CAP-9.0%2B-orange)](https://cap.cloud.sap/)
+[![Tests](https://github.com/ODATANO/ODATANO-WATCH/actions/workflows/test.yml/badge.svg)](https://github.com/ODATANO/ODATANO-WATCH/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/ODATANO/ODATANO-WATCH/branch/main/graph/badge.svg)](https://codecov.io/gh/ODATANO/ODATANO-WATCH)
 
 A CAP (Cloud Application Programming Model) plugin for monitoring the Cardano blockchain. Built as a fully integrated plugin, it can be seamlessly integrated into existing CAP projects to provide blockchain functionalities such as address monitoring, transaction tracking, and event management.
 
@@ -94,7 +96,6 @@ The plugin provides a complete OData/REST Admin Service:
 GET /cardano-watcher-admin/WatchedAddresses
 GET /cardano-watcher-admin/TransactionSubmissions
 GET /cardano-watcher-admin/BlockchainEvents
-GET /cardano-watcher-admin/Transactions
 GET /cardano-watcher-admin/WatcherConfigs
 ```
 
@@ -104,12 +105,7 @@ GET /cardano-watcher-admin/WatcherConfigs
 ```http
 POST /cardano-watcher-admin/startWatcher          # Start all polling paths
 POST /cardano-watcher-admin/stopWatcher           # Stop all polling paths
-POST /cardano-watcher-admin/startAddressPolling   # Start address monitoring
-POST /cardano-watcher-admin/startTransactionPolling # Start transaction tracking
-POST /cardano-watcher-admin/stopAddressPolling    # Stop address monitoring
-POST /cardano-watcher-admin/stopTransactionPolling # Stop transaction tracking
-GET  /cardano-watcher-admin/getWatcherStatus      # Get status
-POST /cardano-watcher-admin/manualPoll            # Trigger manual poll cycle
+POST /cardano-watcher-admin/getWatcherStatus      # Get status
 ```
 
 **Address Monitoring**
@@ -124,9 +120,18 @@ Content-Type: application/json
 }
 ```
 
+```http
+POST /cardano-watcher-admin/removeWatchedAddress
+Content-Type: application/json
+
+{
+  "address": "addr_test1qrgfq5jeznaehnf4zs02laas2juuuyzlz48tkue50luuws2nrznmesueg7drstsqaaenq6qpcnvqvn0kessd9fw2wxys6tv622"
+}
+```
+
 **Transaction Tracking**
 ```http
-POST /cardano-watcher-admin/submitAndTrackTransaction
+POST /cardano-watcher-admin/addWatchedTransaction
 Content-Type: application/json
 
 {
@@ -136,25 +141,12 @@ Content-Type: application/json
 }
 ```
 
-**Transaction Status Update**
 ```http
-POST /cardano-watcher-admin/updateTransactionStatus
+POST /cardano-watcher-admin/removeWatchedTransaction
 Content-Type: application/json
 
 {
-  "txHash": "cade0ed879a9ea5dd65f13be98581d476b0e77946c9c11123832225a7de55e28",
-  "status": "CONFIRMED"
-}
-```
-
-**Remove Watch**
-```http
-POST /cardano-watcher-admin/removeWatch
-Content-Type: application/json
-
-{
-  "watchType": "address",  // or "transaction"
-  "key": "addr_test1..."   // or txHash
+  "txHash": "cade0ed879a9ea5dd65f13be98581d476b0e77946c9c11123832225a7de55e28"
 }
 ```
 
@@ -166,12 +158,6 @@ import cardanoWatcher from "@odatano/watch";
 // Start/stop all polling paths
 await cardanoWatcher.start();
 await cardanoWatcher.stop();
-
-// Control individual paths
-await cardanoWatcher.startAddressPolling();
-await cardanoWatcher.startTransactionPolling();
-await cardanoWatcher.stopAddressPolling();
-await cardanoWatcher.stopTransactionPolling();
 
 // Get status
 const status = cardanoWatcher.getStatus();
@@ -244,11 +230,8 @@ entity TransactionSubmission {
   description: String(500);
   active: Boolean;
   currentStatus: String(20);  // PENDING, CONFIRMED, FAILED
-  lastChecked: Timestamp;
   confirmations: Integer;
   network: String(20);
-  submittedBy: String(100);
-  metadata: LargeString;
   events: Composition of many BlockchainEvent;
   hasEvents: Boolean;
 }
@@ -262,7 +245,7 @@ entity BlockchainEvent {
   key id: UUID;
   type: String(50);  // TX_CONFIRMED, ADDRESS_ACTIVITY, etc.
   description: String(500);
-  blockNumber: Integer64;
+  blockHeight: Integer64;
   blockHash: Blake2b256;
   txHash: Blake2b256;
   address: Association to WatchedAddress;
@@ -333,7 +316,7 @@ await cardanoWatcher.stopTransactionPolling();
 │   ├── config.ts            # Configuration Management
 │   ├── watcher.ts           # Blockchain Watcher Logic
 │   ├── blockfrost.ts        # Blockfrost API Integration
-│   └── mappers.ts           # Data Mapping Utilities
+│   └── plugin.ts            # Plugin Implementation
 ├── srv/                      # Service Definitions & Implementations
 │   ├── admin-service.cds    # Admin Service Definition
 │   ├── admin-service.ts     # Admin Service Implementation
@@ -354,7 +337,7 @@ await cardanoWatcher.stopTransactionPolling();
 ├── test/                     # Tests
 │   ├── unit/
 │   └── integration/
-├── cds-plugin.ts            # CDS Plugin Entry Point
+├── cds-plugin.js            # CDS Plugin Entry Point
 ├── package.json
 └── tsconfig.json
 ```
@@ -369,8 +352,9 @@ npm run build:watch  # Watch mode for development
 ### Tests
 
 ```bash
-npm test            # Run all tests
-npm run test:watch  # Watch mode for tests
+npm test               # Run all tests
+npm run test:watch     # Watch mode for tests
+npm run test:coverage  # Run tests with coverage report
 ```
 
 ### Code Quality

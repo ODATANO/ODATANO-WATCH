@@ -25,31 +25,19 @@ export function isBlockHash(hash: unknown): boolean {
 
 /**
  * Validate Cardano Bech32 address
+ * Note: Cardano addresses are always lowercase per convention, so this
+ * validator intentionally only accepts lowercase characters.
  * @param address - The address to validate
  * @returns {boolean} True if valid
  */
 export function isValidBech32Address(address: unknown): boolean {
   if (typeof address !== 'string') return false;
-  
-  // Basic Bech32 pattern for Cardano addresses
-  // addr1 or addr_test1 followed by alphanumeric characters
-  const bech32Pattern = /^(addr1|addr_test1)[a-z0-9]{53,98}$/;
-  
-  return bech32Pattern.test(address);
-}
 
-/**
- * Validate Cardano Bech32 stake address
- * @param stakeAddress - The stake address to validate
- * @returns {boolean} True if valid
- */
-export function isValidBech32StakeAddress(stakeAddress: unknown): boolean {
-  if (typeof stakeAddress !== 'string') return false;
-  
-  // Stake addresses start with stake1 or stake_test1
-  const stakePattern = /^(stake1|stake_test1)[a-z0-9]{53}$/;
-  
-  return stakePattern.test(stakeAddress);
+  // Basic Bech32 pattern for Cardano addresses
+  // addr1 (mainnet) or addr_test1 (testnet) followed by lowercase alphanumeric characters
+  const bech32Pattern = /^(addr1|addr_test1)[a-z0-9]{53,98}$/;
+
+  return bech32Pattern.test(address);
 }
 
 /**
@@ -72,55 +60,6 @@ export function isValidNetwork(network: unknown): boolean {
 export function isEpochNumber(epoch: unknown): boolean {
   if (typeof epoch !== 'number') return false;
   return Number.isInteger(epoch) && epoch >= 0;
-}
-
-/**
- * Validate pool ID
- * @param poolId - The pool ID to validate
- * @returns {boolean} True if valid
- */
-export function isValidPoolId(poolId: unknown): boolean {
-  if (typeof poolId !== 'string') return false;
-  
-  // Pool IDs are Bech32 encoded with 'pool' prefix
-  const poolPattern = /^pool1[a-z0-9]{51}$/;
-  
-  return poolPattern.test(poolId);
-}
-
-/**
- * Validate DRep ID
- * @param drepId - The drep ID to validate
- * @returns {boolean} True if valid
- */
-export function isValidDrepId(drepId: unknown): boolean {
-  if (typeof drepId !== 'string') return false;
-  
-  // DRep IDs are Bech32 encoded with 'drep' prefix
-  const drepPattern = /^drep1[a-z0-9]{51}$/;
-  
-  return drepPattern.test(drepId);
-}
-
-/**
- * Validate CBOR hex string
- * @param cbor - The CBOR string to validate
- * @returns {boolean} True if valid
- */
-export function isValidCbor(cbor: unknown): boolean {
-  if (typeof cbor !== 'string') return false;
-  
-  // CBOR is hex-encoded, so it should be even length and contain only hex characters
-  return /^[a-f0-9]+$/i.test(cbor) && cbor.length % 2 === 0 && cbor.length > 0;
-}
-
-/**
- * Validate address (allows both payment and stake addresses)
- * @param address - The address to validate
- * @returns {boolean} True if valid
- */
-export function isValidAddress(address: unknown): boolean {
-  return isValidBech32Address(address) || isValidBech32StakeAddress(address);
 }
 
 /**

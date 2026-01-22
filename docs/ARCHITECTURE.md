@@ -125,34 +125,48 @@ Timer (60s) → pollTransactionSubmissions()
 
 ```cds
 entity WatchedAddress {
-  key ID: UUID;
-  address: String(120);
+  key address: Bech32;  // String(120)
+  description: String(500);
+  active: Boolean;
   lastCheckedBlock: Integer64;
-  isActive: Boolean;
+  network: String(20);
+  events: Composition of many BlockchainEvent;
+  hasEvents: Boolean;
 }
 
 entity TransactionSubmission {
-  key ID: UUID;
-  txHash: String(64);
-  currentStatus: String(20);  // PENDING, CONFIRMED
-  isActive: Boolean;
+  key txHash: Blake2b256;  // String(64)
+  description: String(500);
+  active: Boolean;
+  currentStatus: String(20);  // PENDING, CONFIRMED, FAILED
+  confirmations: Integer;
+  network: String(20);
+  events: Composition of many BlockchainEvent;
+  hasEvents: Boolean;
 }
 
 entity BlockchainEvent {
-  key ID: UUID;
-  type: String(30);  // TRANSACTION, TX_CONFIRMED
-  txHash: String(64);
-  blockNumber: Integer64;
-  payload: String;
+  key id: UUID;
+  type: String(50);  // TX_CONFIRMED, ADDRESS_ACTIVITY, etc.
+  description: String(500);
+  blockHeight: Integer64;
+  blockHash: Blake2b256;
+  txHash: Blake2b256;
+  address: Association to WatchedAddress;
+  submission: Association to TransactionSubmission;
+  payload: LargeString;
+  processed: Boolean;
+  processedAt: Timestamp;
+  error: LargeString;
+  network: String(20);
+  createdAt: Timestamp;
 }
 
-entity Transaction {
-  key ID: UUID;
-  txHash: String(64);
-  amount: Integer64;
-  fee: Integer64;
-  sender: String(120);
-  receiver: String(120);
+entity WatcherConfig {
+  key configKey: String(100);
+  value: LargeString;
+  description: String(500);
+  updatedAt: Timestamp;
 }
 ```
 
@@ -164,13 +178,7 @@ entity Transaction {
 {
   address: string;
   count: number;
-  transactions: Array<{
-    txHash: string;
-    blockNumber: number;
-    amount: number;
-    sender: string | null;
-    receiver: string | null;
-  }>;
+  transactions: string[];  // Array of transaction hashes
 }
 ```
 

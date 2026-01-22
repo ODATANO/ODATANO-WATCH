@@ -80,7 +80,8 @@ POST http://localhost:4004/odata/v4/cardano-watcher-admin/addWatchedAddress
 import cardanoWatcher from "@odatano/watch";
 
 const txHash = await submitToBlockchain(tx);
-await cardanoWatcher.submitAndTrackTransaction({ txHash });
+// Use the admin service action to track the transaction
+// POST /cardano-watcher-admin/addWatchedTransaction with { txHash, description, network }
 ```
 
 ## Next Steps

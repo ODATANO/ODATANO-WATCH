@@ -78,7 +78,7 @@ Entities are deployed automatically with `cds deploy`.
 cds deploy --dry-run > migration.sql
 ```
 
-**Created entities**: `WatchedAddress`, `TransactionSubmission`, `BlockchainEvent`, `Transaction`
+**Created entities**: `WatchedAddress`, `TransactionSubmission`, `BlockchainEvent`, `WatcherConfig`
 
 ## Security
 
@@ -160,11 +160,11 @@ cf bind-service my-app cardano-config
 
 ## Performance Tuning
 
-| Project Size | Address Interval | TX Interval | Batch Size |
-|--------------|------------------|-------------|------------|
-| < 10 items   | 30s              | 60s         | 50         |
-| 10-100 items | 60s              | 120s        | 50         |
-| > 100 items  | 120s             | 180s        | 100        |
+| Project Size | Address Interval | TX Interval |
+|--------------|------------------|-------------|
+| < 10 items   | 30s              | 60s         |
+| 10-100 items | 60s              | 120s        |
+| > 100 items  | 120s             | 180s        |
 
 **Blockfrost free tier**: 50,000 requests/day, 10 req/s
 
@@ -189,9 +189,6 @@ cds watch
 // Check status
 const status = await cardanoWatcher.getStatus();
 console.log(status);
-
-// Manual poll
-await cardanoWatcher.manualPoll();
 
 // Enable debug logs
 cds.env.log.levels = { "ODATANO-WATCH": "debug", "CARDANO-WATCH": "debug" };

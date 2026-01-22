@@ -12,13 +12,16 @@ let transactionInterval: NodeJS.Timeout | null = null;
 let isRunning = false;
 let addressPollingActive = false;
 let transactionPollingActive = false;
+let signalHandlersRegistered = false;
 
-let db: any = null; // Database service connection
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let db: any = null;
 
 /**
- * Setup the watcher should be called once in initialization
+ * Setup the watcher - should be called once during initialization
+ * @returns true if setup succeeded, false if Blockfrost is not configured
  */
-export async function setup(): Promise<Boolean> {
+export async function setup(): Promise<boolean> {
   const cfg = config.get();
   
   logger.debug("Watcher setup - Config:", {
@@ -47,9 +50,12 @@ export async function setup(): Promise<Boolean> {
     return false;
   }
   
-  // Register shutdown handlers
-  process.on("SIGTERM", stop);
-  process.on("SIGINT", stop);
+  // Register shutdown handlers (only once to prevent memory leak)
+  if (!signalHandlersRegistered) {
+    process.on("SIGTERM", stop);
+    process.on("SIGINT", stop);
+    signalHandlersRegistered = true;
+  }
 
   if (cfg.autoStart) {
     logger.info("Auto-starting Cardano Watcher...");
@@ -274,8 +280,8 @@ async function processAddress(watchedAddr: WatchedAddress): Promise<number> {
       eventsDetected = transactions.length;
 
       await db.tx(async (tx: any) => {
+        // Insert all blockchain events
         for (const tx_data of transactions) {
-          // Store blockchain event
           await tx.run(
             INSERT.into(BlockchainEvent).entries({
               id: randomUUID(),
@@ -289,23 +295,27 @@ async function processAddress(watchedAddr: WatchedAddress): Promise<number> {
               processed: false,
             } as BlockchainEvent)
           );
-          
-           // update last checked block
-          const maxBlock = Math.max(...transactions.map(t => t.blockHeight));
-          await tx.run(
-            UPDATE.entity(WatchedAddresses)
-              .set({ lastCheckedBlock: maxBlock })
-              .where({ address: watchedAddr.address })
-            );
         }
+
+        // Update lastCheckedBlock once after processing all transactions
+        const maxBlock = Math.max(...transactions.map(t => t.blockHeight));
+        await tx.run(
+          UPDATE.entity(WatchedAddresses)
+            .set({ lastCheckedBlock: maxBlock })
+            .where({ address: watchedAddr.address })
+        );
       });
 
       // Emit event for other parts of the application
-      await (cds as any).emit("cardano.newTransactions", {
-        address: watchedAddr.address,
-        count: transactions.length,
-        transactions: transactions.map(t => t.txHash),
-      });
+      try {
+        await (cds as any).emit("cardano.newTransactions", {
+          address: watchedAddr.address,
+          count: transactions.length,
+          transactions: transactions.map(t => t.txHash),
+        });
+      } catch (emitErr) {
+        logger.warn("Failed to emit newTransactions event:", emitErr);
+      }
     }
   } catch (err) {
     logger.error(`Error processing address ${watchedAddr.address}:`, err);

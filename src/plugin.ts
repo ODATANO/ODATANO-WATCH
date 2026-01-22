@@ -35,7 +35,7 @@ cds.on('served', async () => {
   
   try {
     // Import the watcher module
-    const watcher = await import('./index.js');
+    const watcher = await import('./index');
     
     // Initialize the watcher with the application's database
     await watcher.initialize();
@@ -43,7 +43,7 @@ cds.on('served', async () => {
     logger.info('Plugin initialized successfully');
     initialized = true;
   } catch (err) {
-     // Don't throw a erro, just log it - plugin failure shouldn't crash the main app
+    // Don't throw an error, just log it - plugin failure shouldn't crash the main app
     logger.error('Failed to initialize plugin:', err);
   }
 });
@@ -56,7 +56,7 @@ cds.on('shutdown', async () => {
   
   try {
     logger.debug('Shutting down...');
-    const watcher = await import('./index.js');
+    const watcher = await import('./index');
     await watcher.stop();
     logger.info('stopped');
   } catch (err) {

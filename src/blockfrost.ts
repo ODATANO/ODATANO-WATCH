@@ -1,6 +1,6 @@
 import cds from "@sap/cds";
 import { BlockFrostAPI } from "@blockfrost/blockfrost-js";
-import { CdsTimestamp } from "../@cds-models/_";
+import { handleBackendRequest } from "../srv/utils/backend-request-handler";
 
 export interface TransactionInfo {
   txHash: string;
@@ -9,7 +9,7 @@ export interface TransactionInfo {
   amount: number;
   fee: number;
   confirmations: number;
-  lastSeen: CdsTimestamp;
+  lastSeen: number; // Unix timestamp from Blockfrost
 }
 
 export interface BlockInfo {
@@ -29,7 +29,7 @@ export interface AddressInfo {
 
 const logger = cds.log("ODATANO-WATCH");
 
-let blockfrostClient: any = null;
+let blockfrostClient: BlockFrostAPI | null = null;
 
 /**
  * Initialize Blockfrost client
@@ -69,10 +69,10 @@ export async function fetchAddressTransactions(
     return null;
   }
 
-  try {
+  return handleBackendRequest(async () => {
     logger.debug(`Fetching transactions for address: ${address}`);
 
-    const transactions = await blockfrostClient.addressesTransactions(
+    const transactions = await blockfrostClient!.addressesTransactions(
       address,
       {
         order: "asc",
@@ -86,23 +86,25 @@ export async function fetchAddressTransactions(
 
     logger.debug(`Found ${transactions.length} transactions`);
 
+    // Fetch latest block once outside the loop for efficiency
+    const latestBlock = await blockfrostClient!.blocksLatest();
+    const latestBlockHeight = latestBlock.height ?? 0;
+
     const parsedTxs: TransactionInfo[] = [];
     for (const tx of transactions) {
       try {
-        const txDetails = await blockfrostClient.txs(tx.tx_hash);
-        const txUtxos = await blockfrostClient.txsUtxos(tx.tx_hash);
+        const txDetails = await blockfrostClient!.txs(tx.tx_hash);
+        const txUtxos = await blockfrostClient!.txsUtxos(tx.tx_hash);
 
         if (fromBlock && txDetails.block_height <= fromBlock) {
           continue;
         }
 
         const amount = txUtxos.outputs[0]?.amount
-          ? parseFloat(txUtxos.outputs[0].amount.find((a: any) => a.unit === "lovelace")?.quantity || 0) / 1000000
+          ? parseFloat(txUtxos.outputs[0].amount.find((a: any) => a.unit === "lovelace")?.quantity || "0") / 1000000
           : 0;
 
-        const latestBlock = await blockfrostClient.blocksLatest();
-        
-        const confirmations = latestBlock.height - txDetails.block_height;
+        const confirmations = latestBlockHeight - txDetails.block_height;
 
         parsedTxs.push({
           txHash: tx.tx_hash,
@@ -120,11 +122,7 @@ export async function fetchAddressTransactions(
     }
 
     return parsedTxs.length > 0 ? parsedTxs : null;
-
-  } catch (err) {
-    logger.error(`Error fetching transactions for ${address}:`, err);
-    throw err;
-  }
+  }, "Blockfrost");
 }
 
 /**
@@ -135,18 +133,15 @@ export async function getLatestBlock(): Promise<BlockInfo | null> {
     return null;
   }
 
-  try {
-    const block = await blockfrostClient.blocksLatest();
+  return handleBackendRequest(async () => {
+    const block = await blockfrostClient!.blocksLatest();
     return {
-      height: block.height,
+      height: block.height ?? 0,
       hash: block.hash,
-      time: block.time,
-      slot: block.slot,
+      time: block.time ?? 0,
+      slot: block.slot ?? 0,
     };
-  } catch (err) {
-    logger.error("Error fetching latest block:", err);
-    throw err;
-  }
+  }, "Blockfrost");
 }
 
 /**
@@ -157,22 +152,19 @@ export async function getAddressInfo(address: string): Promise<AddressInfo | nul
     return null;
   }
 
-  try {
-    const info = await blockfrostClient.addresses(address);
+  return handleBackendRequest(async () => {
+    const info = await blockfrostClient!.addresses(address);
     
     const transactions = await fetchAddressTransactions(address);
 
     return {
       address: info.address,
-      balance: parseFloat(info.amount.find((a: any) => a.unit === "lovelace")?.quantity || 0) / 1000000,
+      balance: parseFloat(info.amount.find((a: any) => a.unit === "lovelace")?.quantity || "0") / 1000000,
       stakeAddress: info.stake_address,
       type: info.type,
       transactions: transactions || [],
     };
-  } catch (err) {
-    logger.error(`Error fetching address info for ${address}:`, err);
-    throw err;
-  }
+  }, "Blockfrost");
 }
 
 export async function getTransaction(hash: string): Promise<TransactionInfo | null> {
@@ -180,27 +172,28 @@ export async function getTransaction(hash: string): Promise<TransactionInfo | nu
     return null;
   }
   
-  try {
-    const tx = await blockfrostClient.txs(hash);
-    
+  return handleBackendRequest(async () => {
+    const tx = await blockfrostClient!.txs(hash);
+
     // Get latest block to calculate confirmations
-    const latestBlock = await blockfrostClient.blocksLatest();
-    const confirmations = latestBlock.height - tx.block_height;
-    
+    const latestBlock = await blockfrostClient!.blocksLatest();
+    const latestBlockHeight = latestBlock.height ?? 0;
+    const confirmations = latestBlockHeight - tx.block_height;
+
     return {
       txHash: tx.hash,
       blockHash: tx.block,
       blockHeight: tx.block_height,
-      amount: parseFloat(tx.output_amount.find((a: any) => a.unit === "lovelace")?.quantity || 0) / 1000000,
+      amount: parseFloat(tx.output_amount.find((a: any) => a.unit === "lovelace")?.quantity || "0") / 1000000,
       fee: parseFloat(tx.fees) / 1000000,
       confirmations,
       lastSeen: tx.block_time,
     };
-  } catch (err) {
+  }, "Blockfrost").catch(err => {
     // Transaction might not be on chain yet or be in mempool
     logger.debug(`Transaction ${hash} not found:`, err);
     return null;
-  }
+  });
 }
 
 /**
