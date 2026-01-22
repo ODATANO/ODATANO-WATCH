@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-01-22
+
+### Added
+- GitHub Actions CI workflow for automated testing on Node.js 20.x and 22.x
+- Test coverage reporting with Codecov integration
+- `test:coverage` npm script for generating coverage reports
+- `cds:types` npm script for CDS type generation
+- Test and coverage badges in README
+
+### Changed
+- Renamed `eslint.config.js` to `eslint.config.mjs` to eliminate Node.js module type warning
+- Updated `prepare` script to include CDS type generation before build
+- Enhanced README with test workflow and coverage badges
+
+### Fixed
+- **Type Safety**: Replaced all `any` types with proper TypeScript types across the codebase
+  - Added `BlockfrostAmount` interface for Blockfrost API responses
+  - Changed `Function` type to proper function signatures in tests
+  - Used `unknown` type for error handling with proper type guards
+  - Used `Service` type from `@sap/cds` for database operations
+  - Fixed optional parameter handling in `initializeClient`
+- Fixed ESLint warnings about unsafe function types
+- Fixed TypeScript strict mode compliance in error handling
+- Added CDS type generation step to CI workflow
+
+### Infrastructure
+- GitHub Actions workflow with matrix testing (Node 20.x, 22.x)
+- Automated type checking, linting, and testing in CI
+- Coverage reporting pipeline
+
 ## [0.1.1] - 2026-01-19
 
 ### Changed
