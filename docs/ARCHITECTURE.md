@@ -37,20 +37,29 @@ CAP plugin that monitors Cardano blockchain via Blockfrost API. Uses two indepen
 
 ## Core Modules
 
-### cds-plugin.ts
+### cds-plugin.js / src/plugin.ts
 
-Entry point. Auto-loaded by CAP if `cds.env.requires.watch` exists.
+Entry point. Auto-loaded by CAP when the package contains `cds-plugin.js`.
+
+Registers the `cardano-watcher` kind with CDS model paths, and critically also sets `model` directly on the requires entry (since CAP's `_link_required_services()` runs before plugins load and won't merge kind properties into existing requires entries).
 
 ```typescript
-const isServe = (cds as any).cli?.command === "serve";
-const isBuild = (cds as any).build?.register;
+// Register kind (for standalone use)
+cds.env.requires.kinds['cardano-watcher'] = {
+  impl: '@odatano/watch',
+  model: ['@odatano/watch/db/schema', '@odatano/watch/srv/admin-service'],
+};
 
-if (isBuild && !isServe) {
-  module.exports = {};
-} else if (Object.keys(cds.env.requires.watch ?? {}).length) {
-  module.exports = cardanoWatcher.initialize();
+// Set model directly on requires entry (kind merge already happened)
+if (cds.env.requires['cardano-watcher']) {
+  cds.env.requires['cardano-watcher'].model = [
+    '@odatano/watch/db/schema',
+    '@odatano/watch/srv/admin-service',
+  ];
 }
 ```
+
+On `cds.on('served')`, initializes the watcher. On `cds.on('shutdown')`, stops it gracefully.
 
 ### src/index.ts
 

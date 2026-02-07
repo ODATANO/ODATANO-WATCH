@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-02-07
+
+### Fixed
+- **CDS Model Auto-Discovery**: Plugin's CDS models (schema, admin service) were not loaded by consumer apps. CAP's `_link_required_services()` runs during env construction before `cds-plugin.js` loads, so the `model` array set on `cds.env.requires.kinds` was never merged into the requires entry. Fixed by setting `model` directly on `cds.env.requires['cardano-watcher']` in addition to the kind registration.
+- **@impl Path Resolution**: `CardanoWatcherAdminService` used a relative `@impl` path (`srv/admin-service`) which CAP resolved against the consumer app root instead of the plugin package root, causing `Cannot find module` errors. Fixed by using the package-qualified path `@odatano/watch/srv/admin-service`.
+
 ## [0.1.2] - 2026-01-22
 
 ### Added

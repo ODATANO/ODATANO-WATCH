@@ -4,7 +4,7 @@ using { odatano.watch as db } from '../db/schema';
  * Cardano Watcher Admin Service
  * Manages blockchain address monitoring and transaction tracking
  */
-service CardanoWatcherAdminService @(impl: 'srv/admin-service') {
+service CardanoWatcherAdminService @(impl: '@odatano/watch/srv/admin-service') {
   
   // ---------------------------------------------------------------------------
   // Entity Projections

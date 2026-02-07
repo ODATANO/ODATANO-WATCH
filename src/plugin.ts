@@ -21,7 +21,17 @@ if (!cds.env.requires.kinds) {
 // Register cardano-watcher service kind
 (cds.env.requires as { kinds?: Record<string, unknown> }).kinds!['cardano-watcher'] = {
   impl: '@odatano/watch',
+  model: ['@odatano/watch/db/schema', '@odatano/watch/srv/admin-service'],
 };
+
+// CRITICAL: Also set model directly on the requires entry.
+// CAP's _link_required_services() runs during env construction, BEFORE cds-plugin.js is loaded,
+// so the model array on the kind is never merged into cds.env.requires['cardano-watcher'].
+// We must set it directly on the requires entry for CAP's model resolution to find it.
+const reqEntry = cds.env.requires['cardano-watcher'] as Record<string, unknown> | undefined;
+if (reqEntry) {
+  reqEntry.model = ['@odatano/watch/db/schema', '@odatano/watch/srv/admin-service'];
+}
 
 logger.debug('Plugin registered');
 

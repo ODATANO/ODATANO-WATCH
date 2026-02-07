@@ -60,6 +60,7 @@ describe('Plugin Module', () => {
       expect((mockCds.env.requires as any).kinds).toBeDefined();
       expect((mockCds.env.requires as any).kinds['cardano-watcher']).toEqual({
         impl: '@odatano/watch',
+        model: ['@odatano/watch/db/schema', '@odatano/watch/srv/admin-service'],
       });
     });
 

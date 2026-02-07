@@ -177,10 +177,28 @@ cf bind-service my-app cardano-config
 npm ls @odatano/watch
 
 # Verify config
-cds env get requires.watch
+cds env get requires.cardano-watcher
 
 # View logs
 cds watch
+```
+
+### CDS Models Not Discovered (fixed in v0.1.3)
+
+If `CardanoWatcherAdminService` does not appear after `cds serve`, the plugin's CDS models are not being loaded. This was fixed in v0.1.3. If you are on an older version, add `model` explicitly in consumer `package.json`:
+
+```json
+{
+  "cds": {
+    "requires": {
+      "cardano-watcher": {
+        "model": ["@odatano/watch/db/schema", "@odatano/watch/srv/admin-service"],
+        "network": "preview",
+        "blockfrostApiKey": "preview_YOUR_KEY"
+      }
+    }
+  }
+}
 ```
 
 ### Events Not Firing

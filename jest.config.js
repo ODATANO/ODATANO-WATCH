@@ -8,6 +8,7 @@ module.exports = {
     '^.+\\.(ts|tsx)$': ['ts-jest', { tsconfig: 'tsconfig.json' }],
   },
   transformIgnorePatterns: ['/node_modules/'],
+  globalSetup: '<rootDir>/test/jest-global-setup.js',
   collectCoverageFrom: [
     'src/**/*.ts',
     'srv/**/*.ts',
