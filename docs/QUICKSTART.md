@@ -30,6 +30,8 @@ Add to `package.json`. Address watching only:
 
 Get a free Blockfrost key at [blockfrost.io](https://blockfrost.io/).
 
+Or, if you're running a self-hosted Blockfrost-compatible endpoint (e.g. [Dolos](https://github.com/txpipe/dolos)'s MiniBF), drop the API key and set `blockfrostCustomBackend` instead — see [Setup → Backend Notes](./SETUP.md#blockfrost) for details.
+
 To enable credential or policy watching, opt in:
 
 ```json

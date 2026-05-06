@@ -107,15 +107,32 @@ describe('Config Module', () => {
 
     it('should log warning for missing API key during initialization', () => {
       jest.clearAllMocks();
-      
-      config.initialize({ 
+
+      config.initialize({
         network: 'preview',
-        blockfrostApiKey: '' 
+        blockfrostApiKey: ''
       });
 
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'No Blockfrost API key configured. Set blockfrostApiKey in cds.env.requires.watch configuration'
       );
+    });
+
+    it('should not warn about missing API key when blockfrostCustomBackend is set', () => {
+      jest.clearAllMocks();
+
+      config.initialize({
+        network: 'preview',
+        blockfrostApiKey: '',
+        blockfrostCustomBackend: 'http://localhost:3100/api/v0',
+      });
+
+      expect(mockLogger.warn).not.toHaveBeenCalledWith(
+        expect.stringContaining('No Blockfrost API key configured')
+      );
+
+      const cfg = config.get();
+      expect(cfg.blockfrostCustomBackend).toBe('http://localhost:3100/api/v0');
     });
   });
 });

@@ -189,17 +189,20 @@ export async function setup(): Promise<boolean> {
   
   logger.debug("Watcher setup - Config:", {
     hasApiKey: !!cfg.blockfrostApiKey,
+    hasCustomBackend: !!cfg.blockfrostCustomBackend,
     network: cfg.network,
     apiKeyPrefix: cfg.blockfrostApiKey?.substring(0, 10)
   });
-  
+
   // Use the application's standard database
   logger.debug('Connecting to standard database service');
   db = cds.db;
   logger.debug("Database connection established");
-  
-  // Initialize Blockfrost if API key is available
-  if (cfg.blockfrostApiKey) {
+
+  // Initialize Blockfrost if either an API key or a customBackend is configured.
+  // customBackend lets users route through a self-hosted Dolos / cardano-node
+  // — the SDK accepts a missing projectId iff customBackend is set.
+  if (cfg.blockfrostApiKey || cfg.blockfrostCustomBackend) {
     logger.debug("Initializing Blockfrost client...");
     try {
       blockfrost.initializeClient(cfg);
@@ -209,7 +212,7 @@ export async function setup(): Promise<boolean> {
       return false;
     }
   } else {
-    logger.warn("No Blockfrost API key found in configuration");
+    logger.warn("No Blockfrost API key or customBackend found in configuration");
     return false;
   }
 

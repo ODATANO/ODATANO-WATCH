@@ -141,7 +141,7 @@ describe('Watcher Module', () => {
       );
     });
 
-    it('should return false when no API key is configured', async () => {
+    it('should return false when no API key or customBackend is configured', async () => {
       mockConfig.get.mockReturnValue({
         blockfrostApiKey: null,
         network: 'preview',
@@ -152,7 +152,26 @@ describe('Watcher Module', () => {
 
       expect(result).toBe(false);
       expect(mockLogger.warn).toHaveBeenCalledWith(
-        'No Blockfrost API key found in configuration'
+        'No Blockfrost API key or customBackend found in configuration'
+      );
+    });
+
+    it('should initialize Blockfrost client when only customBackend is set', async () => {
+      mockConfig.get.mockReturnValue({
+        blockfrostApiKey: undefined,
+        blockfrostCustomBackend: 'http://localhost:3100/api/v0',
+        network: 'mainnet',
+        autoStart: false,
+      });
+
+      const result = await watcher.setup();
+
+      expect(result).toBe(true);
+      expect(mockBlockfrost.initializeClient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blockfrostCustomBackend: 'http://localhost:3100/api/v0',
+          network: 'mainnet',
+        })
       );
     });
 

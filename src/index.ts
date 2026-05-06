@@ -23,10 +23,11 @@ export async function initialize(): Promise<void> {
   config.initialize(envConfig);
   
   const cfg = config.get();
-  logger.debug("Final config:", { 
-      network: cfg.network, 
+  logger.debug("Final config:", {
+      network: cfg.network,
       hasApiKey: !!cfg.blockfrostApiKey,
-      apiKeyLength: cfg.blockfrostApiKey?.length 
+      apiKeyLength: cfg.blockfrostApiKey?.length,
+      hasCustomBackend: !!cfg.blockfrostCustomBackend,
     });
 
   // Setup watcher using the standard database

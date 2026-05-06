@@ -20,6 +20,14 @@ export interface CardanoWatcherConfig {
   network?: "mainnet" | "preview" | "preprod";
   blockfrostApiKey?: string;
   /**
+   * Optional self-hosted Blockfrost-compatible endpoint (e.g. Dolos MiniBF
+   * at `http://localhost:3100/api/v0`). When set, the SDK routes all calls
+   * here instead of the public Blockfrost service, and `blockfrostApiKey`
+   * becomes optional. Useful for high-volume polling that would exhaust
+   * the public free-tier daily quota.
+   */
+  blockfrostCustomBackend?: string;
+  /**
    * Koios API key. Optional — Koios has a free tier with rate limits.
    * Required only for credential watching, where we resolve a payment
    * credential to its set of bech32 addresses via Koios `credential_*`.
@@ -67,6 +75,7 @@ function loadInitialConfig(): CardanoWatcherConfig {
   }
   // Resolve apiKey: prefer CDS config, fallback to env variable (for plugin development only)
   let apiKey = cdsConfig?.blockfrostApiKey ?? env.BLOCKFROST_KEY;
+  let customBackend = cdsConfig?.blockfrostCustomBackend ?? env.BLOCKFROST_CUSTOM_BACKEND;
   let koiosKey = cdsConfig?.koiosApiKey ?? env.KOIOS_KEY;
   let ogmiosUrl = cdsConfig?.ogmiosUrl ?? env.OGMIOS_URL ?? "ws://localhost:1337";
   let backend = (cdsConfig?.backend ?? env.WATCHER_BACKEND ?? "blockfrost") as WatcherBackend;
@@ -74,6 +83,7 @@ function loadInitialConfig(): CardanoWatcherConfig {
   return {
     network: cdsConfig?.network ?? "preview",
     blockfrostApiKey: apiKey,
+    blockfrostCustomBackend: customBackend,
     koiosApiKey: koiosKey,
     backend,
     ogmiosUrl,
@@ -135,7 +145,7 @@ function validateConfiguration(): void {
     throw new Error(`Invalid backend: ${configuration.backend}. Must be one of: ${validBackends.join(", ")}`);
   }
 
-  if (!configuration.blockfrostApiKey) {
+  if (!configuration.blockfrostApiKey && !configuration.blockfrostCustomBackend) {
     logger.warn(
       "No Blockfrost API key configured. Set blockfrostApiKey in cds.env.requires.watch configuration"
     );

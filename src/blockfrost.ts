@@ -217,22 +217,46 @@ export async function fetchTxUtxos(
 }
 
 /**
- * Initialize Blockfrost client
+ * Initialize Blockfrost client.
+ *
+ * When `blockfrostCustomBackend` is set (e.g. a self-hosted Dolos MiniBF
+ * URL), the SDK routes all calls there and `blockfrostApiKey` is optional
+ * — the SDK's `validateOptions` accepts a missing projectId iff
+ * customBackend is provided.
  */
-export function initializeClient(config: { blockfrostApiKey?: string; network?: string }): BlockFrostAPI {
+export function initializeClient(config: {
+  blockfrostApiKey?: string;
+  blockfrostCustomBackend?: string;
+  network?: string;
+}): BlockFrostAPI {
   if (blockfrostClient) {
     return blockfrostClient;
   }
 
+  // The SDK's Options is a discriminated union: either projectId or
+  // customBackend must be present. Branch so the type discriminator picks
+  // the right shape — TS won't widen across the union otherwise.
+  const network = config.network as 'mainnet' | 'preprod' | 'preview';
   try {
-    blockfrostClient = new BlockFrostAPI({
-      projectId: config.blockfrostApiKey!,
-      network: config.network as 'mainnet' | 'preprod' | 'preview',
-    });
+    if (config.blockfrostCustomBackend) {
+      blockfrostClient = new BlockFrostAPI({
+        customBackend: config.blockfrostCustomBackend,
+        projectId: config.blockfrostApiKey,
+        network,
+      });
+    } else {
+      blockfrostClient = new BlockFrostAPI({
+        projectId: config.blockfrostApiKey!,
+        network,
+      });
+    }
 
     logger.debug("Blockfrost client initialized", {
       network: config.network,
-      projectId: config.blockfrostApiKey?.substring(0, 10) + "..."
+      customBackend: config.blockfrostCustomBackend ?? null,
+      projectId: config.blockfrostApiKey
+        ? config.blockfrostApiKey.substring(0, 10) + "..."
+        : "<none — using customBackend>",
     });
 
     return blockfrostClient;

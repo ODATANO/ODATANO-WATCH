@@ -35,6 +35,26 @@ npm add @odatano/watch
 
 Credential and policy watching are off by default — opt in via `credentialPolling` / `policyPolling`. Credential watching also needs a (free-tier-OK) Koios endpoint. See [Quick Start](docs/QUICKSTART.md) for the full config.
 
+### Self-hosted Blockfrost (Dolos / cardano-node)
+
+Polling burns through the Blockfrost free-tier daily quota quickly. To route the SDK at a self-hosted Blockfrost-compatible endpoint instead, set `blockfrostCustomBackend` (and drop `blockfrostApiKey`):
+
+```json
+{
+  "cds": {
+    "requires": {
+      "watch": {
+        "network": "mainnet",
+        "blockfrostCustomBackend": "http://localhost:3100/api/v0",
+        "credentialPolling": { "enabled": true, "interval": 30 }
+      }
+    }
+  }
+}
+```
+
+`http://localhost:3100/api/v0` is the default for [Dolos](https://github.com/txpipe/dolos)'s MiniBF. Equivalent env var: `BLOCKFROST_CUSTOM_BACKEND`. Public Blockfrost stays the default when this field is unset.
+
 ## Subscribe to events
 
 ```typescript

@@ -42,6 +42,13 @@ npm run build
 interface CardanoWatcherConfig {
   network: "mainnet" | "preprod" | "preview";
   blockfrostApiKey?: string;
+  /**
+   * Optional self-hosted Blockfrost-compatible endpoint (e.g. Dolos MiniBF
+   * at `http://localhost:3100/api/v0`). When set, blockfrostApiKey becomes
+   * optional and all SDK calls route through this URL instead of the
+   * public Blockfrost service.
+   */
+  blockfrostCustomBackend?: string;
   /** Required only when credentialPolling.enabled. Free tier OK. */
   koiosApiKey?: string;
   autoStart?: boolean;       // default: true
@@ -65,6 +72,7 @@ For **plugin development only**, you can use environment variables as fallback:
 
 ```bash
 BLOCKFROST_KEY=mainnet_abc123
+BLOCKFROST_CUSTOM_BACKEND=http://localhost:3100/api/v0  # optional, self-hosted endpoint
 KOIOS_KEY=optional_koios_token
 ```
 
@@ -163,6 +171,8 @@ cf bind-service my-app cardano-config
 
 ### Blockfrost
 Always required. Used for: address-tx history, per-tx UTxO projections, transaction-submission lookup, policy mint/burn enumeration. Free tier: 50,000 req/day, 10 req/s — generally enough for a handful of watches; tighten polling intervals if you hit limits.
+
+For high-volume polling, point the SDK at a self-hosted Blockfrost-compatible endpoint via `blockfrostCustomBackend` (e.g. `http://localhost:3100/api/v0` for [Dolos](https://github.com/txpipe/dolos)'s MiniBF). When set, `blockfrostApiKey` is optional and the public Blockfrost service is bypassed entirely — no daily-quota ceiling, so polling intervals can stay aggressive.
 
 ### Koios (optional)
 Required only for credential watching. Used for credential→addresses resolution and credential-tx listing. Free tier with a 100 req/10 s rate limit and pagination cap of 1000 rows — the plugin paginates via `Range` headers up to a 100k-row safety cap per poll.

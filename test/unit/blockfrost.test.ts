@@ -59,6 +59,48 @@ describe('Blockfrost Module', () => {
 
       expect(client1).toBe(client2);
     });
+
+    // initializeClient caches the client at module scope, so we use
+    // isolateModules to get a fresh module + fresh BlockFrostAPI mock per
+    // assertion below.
+    it('should forward customBackend and accept missing projectId', () => {
+      let ctorArgs: any = null;
+      jest.isolateModules(() => {
+        const blockfrostJs = require('@blockfrost/blockfrost-js');
+        const fresh = require('../../src/blockfrost');
+        fresh.initializeClient({
+          blockfrostCustomBackend: 'http://localhost:3100/api/v0',
+          network: 'mainnet',
+        });
+        ctorArgs = blockfrostJs.BlockFrostAPI.mock.calls[0]?.[0];
+      });
+
+      expect(ctorArgs).toMatchObject({
+        customBackend: 'http://localhost:3100/api/v0',
+        network: 'mainnet',
+      });
+      expect(ctorArgs.projectId).toBeUndefined();
+    });
+
+    it('should forward both apiKey and customBackend when both are set', () => {
+      let ctorArgs: any = null;
+      jest.isolateModules(() => {
+        const blockfrostJs = require('@blockfrost/blockfrost-js');
+        const fresh = require('../../src/blockfrost');
+        fresh.initializeClient({
+          blockfrostApiKey: 'my-key',
+          blockfrostCustomBackend: 'http://self-hosted/api/v0',
+          network: 'preview',
+        });
+        ctorArgs = blockfrostJs.BlockFrostAPI.mock.calls[0]?.[0];
+      });
+
+      expect(ctorArgs).toMatchObject({
+        projectId: 'my-key',
+        customBackend: 'http://self-hosted/api/v0',
+        network: 'preview',
+      });
+    });
   });
 
   describe('fetchAddressTransactions', () => {
