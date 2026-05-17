@@ -1,7 +1,7 @@
 # ODATANO-WATCH
 
 [![Tests](https://github.com/ODATANO/ODATANO-WATCH/actions/workflows/test.yml/badge.svg)](https://github.com/ODATANO/ODATANO-WATCH/actions/workflows/test.yml)
-[![Coverage](https://codecov.io/gh/ODATANO/ODATANO-WATCH/branch/main/graph/badge.svg)](https://codecov.io/gh/ODATANO/ODATANO-WATCH)
+[![Coverage](https://codecov.io/gh/ODATANO/WATCH/branch/main/graph/badge.svg)](https://codecov.io/gh/ODATANO/WATCH)
 [![npm](https://img.shields.io/npm/v/@odatano/watch?color=blue&logo=npm)](https://www.npmjs.com/package/@odatano/watch)
 [![npm downloads](https://img.shields.io/npm/dt/@odatano/watch?logo=npm&label=downloads&color=blue)](https://www.npmjs.com/package/@odatano/watch)
   
