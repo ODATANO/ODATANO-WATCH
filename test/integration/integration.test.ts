@@ -595,4 +595,317 @@ describe('Integration Tests', () => {
       expect(policyResp.status).to.equal(200);
     });
   });
+
+  // ----------------------------------------------------------------------------
+  // Credential Monitoring
+  // ----------------------------------------------------------------------------
+  describe('Credential Monitoring', () => {
+    const validCredHex = '0805d8541db33f4841585fed4c3a7e87e2ff7018243038f06ceb660c';
+    const validCredHex2 = '1805d8541db33f4841585fed4c3a7e87e2ff7018243038f06ceb660c';
+
+    it('adds a watched credential with all optional fields', async () => {
+      const { status, data } = await test.post(
+        '/odata/v4/cardano-watcher-admin/addWatchedCredential',
+        {
+          paymentCredHex: validCredHex,
+          description: 'minswap pool',
+          tag: 'dex',
+          network: TEST_DATA.network,
+        },
+      );
+
+      expect(status).to.equal(200);
+      expect(data.paymentCredHex).to.equal(validCredHex);
+      expect(data.tag).to.equal('dex');
+      expect(data.active).to.be.true;
+    });
+
+    it('removes a watched credential', async () => {
+      await test.post('/odata/v4/cardano-watcher-admin/addWatchedCredential', {
+        paymentCredHex: validCredHex2,
+        network: TEST_DATA.network,
+      });
+
+      const { data } = await test.post(
+        '/odata/v4/cardano-watcher-admin/removeWatchedCredential',
+        { paymentCredHex: validCredHex2 },
+      );
+      expect(data.success).to.be.true;
+    });
+
+    it('rejects an invalid credential hex (too short)', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/addWatchedCredential', {
+          paymentCredHex: 'deadbeef',
+          network: TEST_DATA.network,
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+      }
+    });
+
+    it('rejects missing paymentCredHex field', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/addWatchedCredential', {});
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.be.greaterThan(399);
+      }
+    });
+
+    it('rejects invalid network on add', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/addWatchedCredential', {
+          paymentCredHex: validCredHex,
+          network: 'galaxy',
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+      }
+    });
+
+    it('rejects malformed includesAssetsJson', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/addWatchedCredential', {
+          paymentCredHex: validCredHex,
+          network: TEST_DATA.network,
+          includesAssetsJson: 'not-json',
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+      }
+    });
+
+    it('rejects out-of-range coalesceMs', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/addWatchedCredential', {
+          paymentCredHex: validCredHex,
+          network: TEST_DATA.network,
+          coalesceMs: 999_999,
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+      }
+    });
+
+    it('rejects duplicate credential add', async () => {
+      await test.post('/odata/v4/cardano-watcher-admin/addWatchedCredential', {
+        paymentCredHex: validCredHex,
+        network: TEST_DATA.network,
+      });
+
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/addWatchedCredential', {
+          paymentCredHex: validCredHex,
+          network: TEST_DATA.network,
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+        expect(error.response.data.error.message).to.include('already being watched');
+      }
+    });
+
+    it('rejects removing a credential that is not watched', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/removeWatchedCredential', {
+          paymentCredHex: validCredHex,
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+      }
+    });
+
+    it('rejects remove with invalid hex', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/removeWatchedCredential', {
+          paymentCredHex: 'short',
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+      }
+    });
+  });
+
+  // ----------------------------------------------------------------------------
+  // Policy Monitoring
+  // ----------------------------------------------------------------------------
+  describe('Policy Monitoring', () => {
+    const validPolicyId = '8d18d786e92776c824607fd8e193ec535c79dc61ea2405ddf3b09fe3';
+    const validPolicyId2 = '7d18d786e92776c824607fd8e193ec535c79dc61ea2405ddf3b09fe3';
+
+    it('adds a watched policy', async () => {
+      const { status, data } = await test.post(
+        '/odata/v4/cardano-watcher-admin/addWatchedPolicy',
+        {
+          policyId: validPolicyId,
+          description: 'NFT collection',
+          tag: 'cnft',
+          network: TEST_DATA.network,
+        },
+      );
+
+      expect(status).to.equal(200);
+      expect(data.policyId).to.equal(validPolicyId);
+      expect(data.active).to.be.true;
+    });
+
+    it('removes a watched policy', async () => {
+      await test.post('/odata/v4/cardano-watcher-admin/addWatchedPolicy', {
+        policyId: validPolicyId2,
+        network: TEST_DATA.network,
+      });
+
+      const { data } = await test.post(
+        '/odata/v4/cardano-watcher-admin/removeWatchedPolicy',
+        { policyId: validPolicyId2 },
+      );
+      expect(data.success).to.be.true;
+    });
+
+    it('rejects an invalid policy id', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/addWatchedPolicy', {
+          policyId: 'not-a-policy',
+          network: TEST_DATA.network,
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+      }
+    });
+
+    it('rejects missing policyId field', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/addWatchedPolicy', {});
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.be.greaterThan(399);
+      }
+    });
+
+    it('rejects invalid network on add', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/addWatchedPolicy', {
+          policyId: validPolicyId,
+          network: 'galaxy',
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+      }
+    });
+
+    it('rejects duplicate policy add', async () => {
+      await test.post('/odata/v4/cardano-watcher-admin/addWatchedPolicy', {
+        policyId: validPolicyId,
+        network: TEST_DATA.network,
+      });
+
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/addWatchedPolicy', {
+          policyId: validPolicyId,
+          network: TEST_DATA.network,
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+        expect(error.response.data.error.message).to.include('already being watched');
+      }
+    });
+
+    it('rejects removing a policy that is not watched', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/removeWatchedPolicy', {
+          policyId: validPolicyId,
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+      }
+    });
+
+    it('rejects remove with invalid policy id', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/removeWatchedPolicy', {
+          policyId: 'short',
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+      }
+    });
+  });
+
+  // ----------------------------------------------------------------------------
+  // Extra validation edges in address/transaction handlers
+  // ----------------------------------------------------------------------------
+  describe('Extra Address/Transaction Validation', () => {
+    it('rejects addWatchedAddress with invalid network', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/addWatchedAddress', {
+          address: TEST_DATA.testAddress1,
+          network: 'galaxy',
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+      }
+    });
+
+    it('rejects addWatchedAddress with malformed includesAssetsJson', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/addWatchedAddress', {
+          address: TEST_DATA.testAddress1,
+          network: TEST_DATA.network,
+          includesAssetsJson: '{not-an-array}',
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+      }
+    });
+
+    it('rejects addWatchedAddress with out-of-range coalesceMs', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/addWatchedAddress', {
+          address: TEST_DATA.testAddress1,
+          network: TEST_DATA.network,
+          coalesceMs: -1,
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+      }
+    });
+
+    it('rejects removeWatchedAddress with invalid bech32', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/removeWatchedAddress', {
+          address: 'INVALID',
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+      }
+    });
+
+    it('rejects addWatchedTransaction with invalid network', async () => {
+      try {
+        await test.post('/odata/v4/cardano-watcher-admin/addWatchedTransaction', {
+          txHash: TEST_DATA.testTxHash1,
+          network: 'galaxy',
+        });
+        expect.fail('Should have thrown an error');
+      } catch (error: any) {
+        expect(error.response.status).to.equal(400);
+      }
+    });
+  });
 });

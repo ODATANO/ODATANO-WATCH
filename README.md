@@ -1,13 +1,13 @@
 # ODATANO-WATCH
 
-[![npm version](https://badge.fury.io/js/@odatano%2Fwatch.svg)](https://www.npmjs.com/package/@odatano/watch)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![CAP](https://img.shields.io/badge/SAP%20CAP-9.0%2B-orange)](https://cap.cloud.sap/)
 [![Tests](https://github.com/ODATANO/ODATANO-WATCH/actions/workflows/test.yml/badge.svg)](https://github.com/ODATANO/ODATANO-WATCH/actions/workflows/test.yml)
+[![Coverage](https://codecov.io/gh/ODATANO/ODATANO-WATCH/branch/main/graph/badge.svg)](https://codecov.io/gh/ODATANO/ODATANO-WATCH)
+[![npm](https://img.shields.io/npm/v/@odatano/watch?color=blue&logo=npm)](https://www.npmjs.com/package/@odatano/watch)
+[![npm downloads](https://img.shields.io/npm/dt/@odatano/watch?logo=npm&label=downloads&color=blue)](https://www.npmjs.com/package/@odatano/watch)
+  
+
 
 CAP plugin for monitoring the Cardano blockchain. Watches addresses, payment credentials, and minting policies; emits events with rich UTxO payloads (assets, inline datums, reference scripts) and persists them for replay.
-
-📚 **Docs**: [Quick Start](docs/QUICKSTART.md) · [Setup](docs/SETUP.md) · [Architecture](docs/ARCHITECTURE.md)
 
 ## Install
 
@@ -111,7 +111,12 @@ Plus `addWatchedCredential`, `addWatchedPolicy`, `removeWatched*`. Optional fiel
 - `includesAssetsJson` — asset allowlist; non-matching txs are skipped.
 - `coalesceMs` — batch bus emits into one event per window with cumulative deltas (1 – 300_000).
 
-Full action list and entity surface in [Quick Start](docs/QUICKSTART.md) and [Architecture](docs/ARCHITECTURE.md).
+
+## Docs 
+- [Quick Start](docs/QUICKSTART.md)
+- [Setup](docs/SETUP.md)
+- [Architecture](docs/ARCHITECTURE.md)
+
 
 ## Replay missed events
 
@@ -130,4 +135,4 @@ Set `backend: 'ogmios'` and `ogmiosUrl: 'ws://localhost:1337'` to switch from po
 
 ## License
 
-Apache-2.0
+[Apache-2.0](LICENSE)
